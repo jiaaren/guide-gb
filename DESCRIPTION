@@ -1,0 +1,10 @@
+Package: myCustomModel
+Type: Package
+Title: Custom Regression and Classification Model
+Version: 0.1.0
+Author: Your Name
+Maintainer: Your Name <jiaren.kjr@gmail.com>
+Description: Provides a simple custom model that supports regression and classification, with predict() integration.
+License: MIT
+Encoding: UTF-8
+LazyData: true
