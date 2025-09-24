@@ -23,8 +23,15 @@ my_model <- function(x, y, type = c("regression", "classification")) {
     fit <- glm(y ~ ., data = data.frame(y = y, x), family = binomial)
   }
 
+  # Add attributes
   structure(
-    list(fit = fit, type = type),
+    list(
+      fit = fit,
+      type = type,
+      call = match.call(),             # store the call
+      nobs = nrow(x),                  # number of observations
+      predictors = colnames(x)         # predictor names
+    ),
     class = "my_model"
   )
 }
