@@ -1,5 +1,5 @@
 # modify working directory as needed
-setwd(".")
+setwd("/Users/jkhong/Desktop/guide-gb")
 
 # Load all functions into current session
 for (f in list.files("R", full.names = TRUE)) {
