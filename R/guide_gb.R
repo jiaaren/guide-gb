@@ -87,8 +87,81 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
   ))
 }
 
+loglik <- function(actual, pred) {
+  sum(actual * log(pred) + (1 - actual) * log(1 - pred))
+}
+
+# Handles binary cases
+# accepts when y is either 1 or 0, where positive class is assumed to be 1
+fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations, epsilon) {
+  # keep track of current path and change path to run_folder
+  curr_path <- getwd()
+  setwd(run_folder)
+  
+  # initialise predictions with log odds
+  countPos <- sum(y)
+  countNeg <- length(y) - countPos
+  init.log.odds <- log(countPos / countNeg)
+  log.odds <- init.log.odds
+  y_pred <- rep(1/(1+exp(-log.odds)), length(y))
+
+  # initialise return values
+  eta_vec <- c()
+  err_vec <- c()
+  trees <- list()
+
+  prev_train_err <- loglik(y, y_pred)
+  print(paste('train log likelihood:', prev_train_err))
+  
+  # iterate gradient boosting
+  for (it in 1:iterations) {
+    it_id <- paste('it_', it, sep = '')
+    # compute residuals
+    resid <- y - y_pred
+    # write training data (features + residuals)
+    write.csv(data.frame(x, resid = resid), 
+              file.path(run_folder, 'data.csv'), 
+              row.names = FALSE)
+    # fit guide tree (external call)
+    exec_out <- system(paste(guide_path, '< data.in'), intern = TRUE)
+    # read fitted predictions (should be on residuals)
+    fitted <- read.table('data.fitted', header = TRUE)
+    code <- trim_file_at_marker('data.R')
+    eval(parse(text = code))
+    trees[[it]] <- predicted
+    # calculate gradients using residuals
+    for (node in unique(fitted$node)) {
+      bool_node_train <- fitted$train == 'y' & fitted$node == node
+      # this should be observed instead of predicted
+      train.new.preds <- fitted$observed[bool_node_train]
+      train.prev.preds <- y_pred[bool_node_train]
+      fitted[fitted$node == node, 'predLogOdds'] <- sum(train.new.preds) / sum(train.prev.preds*(1-train.prev.preds))
+    }
+    # update predictions
+    log.odds <- log.odds + fitted$predLogOdds * eta
+    y_pred <- 1/(1+exp(-log.odds))
+    eta_vec[it] <- eta
+    # compute new train error if pred against true target
+    new_train_err <- loglik(y, y_pred)
+    err_vec[it] <- new_train_err
+    print(paste('train loglik after iteration', it, ':', new_train_err)) 
+    # stopping criterion
+    if (abs(new_train_err - prev_train_err) < epsilon) break
+    prev_train_err <- new_train_err
+  }
+  # reset path to current path after fitting
+  setwd(curr_path)
+  return(list(
+    basepred=init.log.odds,
+    trees=trees,
+    iterations=it,
+    eta=eta_vec,
+    err=err_vec
+  ))
+}
+
 guide_gb <- function(x, y, guide_path, run_folder,
-                    type = c("regression", "classification"),
+                    type = c("regression", "binary_classification"),
                     eta=0.1,
                     iterations=100,
                     epsilon=1e-5) {
@@ -98,8 +171,8 @@ guide_gb <- function(x, y, guide_path, run_folder,
     fit <- fit_regression(x,y,guide_path,run_folder,eta,iterations,epsilon)
   }
 
-  if (type == "classification") {
-    fit <- glm(y ~ ., data = data.frame(y = y, x), family = binomial)
+  if (type == "binary_classification") {
+    fit <- fit_binary_classifier(x,y,guide_path,run_folder,eta,iterations,epsilon)
   }
 
   # Add attributes
