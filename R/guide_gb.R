@@ -109,6 +109,7 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
   eta_vec <- c()
   err_vec <- c()
   trees <- list()
+  tree_maps <- list()
 
   prev_train_err <- loglik(y, y_pred)
   print(paste('train log likelihood:', prev_train_err))
@@ -130,6 +131,7 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
     eval(parse(text = code))
     trees[[it]] <- predicted
     # calculate gradients using residuals
+    tmp_tree_map <- list()
     for (node in unique(fitted$node)) {
       bool_node_train <- fitted$train == 'y' & fitted$node == node
       # this should be observed instead of predicted
@@ -137,8 +139,11 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
       # resid would have the same values as fitted_observed
       numerator <- sum(resid[bool_node_train])
       denominator <- sum(y_pred[bool_node_train] * (1 - y_pred[bool_node_train]))
-      fitted[fitted$node == node, 'predLogOdds'] <- numerator / denominator
+      predLogOdds <- numerator / denominator
+      fitted[fitted$node == node, 'predLogOdds'] <- predLogOdds
+      tmp_tree_map[[as.character(node)]] <- predLogOdds
     }
+    tree_maps[[it]] <- tmp_tree_map
     # update predictions
     log.odds <- log.odds + fitted$predLogOdds * eta
     y_pred <- 1/(1+exp(-log.odds))
@@ -156,6 +161,7 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
   return(list(
     basepred=init.log.odds,
     trees=trees,
+    tree_maps=tree_maps,
     iterations=it,
     eta=eta_vec,
     err=err_vec

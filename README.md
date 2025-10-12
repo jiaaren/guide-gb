@@ -20,3 +20,14 @@ Gradient Boosting with GUIDE
 
 # Limitations of GUIDE
 - File I/O - very slow in fitting subsequent trees
+- Current implementation stores the trees in the form of functions, for regression, initial testing was performed using terminal nodes with linear predictions (regression in terminal nodes) instead of constant, while classification used constant prediction. As the `.R` code output provides a vector as the result, the length of output would be dynamic. The type of output cannot be known dynamically as the `.R` code output does not specify name of the prediction output, i.e. node or prediction amount. Currently, two functions are used to make predictions, `make_prediction_tree_regressor` and `make_prediction_tree_regressor`, where they can actually be combined as one.
+
+# Notes
+## Classification tree map
+1. A tree map is used to store the predLogOdds of each node, in R where a `list` is used. Assigning a numerical key to the list would inadvertently create list references of prior unreferenced keys, e.g. initialising the list with key 5, would produce keys 1 to 4 with `NULL`. To prevent this, each node (the key) is converted to a character.
+2. Subsequently, the predict function would require conversion of nodeId integers to character in order to reference the predLogOdds stored in the tree map for each weak learner.
+
+
+# Improvements
+1. Investigate improvements over data structure for treemap and `map_logodds` function.
+2. Include parameter in classification prediction to output as label or probability.
