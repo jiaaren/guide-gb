@@ -134,8 +134,10 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
       bool_node_train <- fitted$train == 'y' & fitted$node == node
       # this should be observed instead of predicted
       train.new.preds <- fitted$observed[bool_node_train]
-      train.prev.preds <- y_pred[bool_node_train]
-      fitted[fitted$node == node, 'predLogOdds'] <- sum(train.new.preds) / sum(train.prev.preds*(1-train.prev.preds))
+      # resid would have the same values as fitted_observed
+      numerator <- sum(resid[bool_node_train])
+      denominator <- sum(y_pred[bool_node_train] * (1 - y_pred[bool_node_train]))
+      fitted[fitted$node == node, 'predLogOdds'] <- numerator / denominator
     }
     # update predictions
     log.odds <- log.odds + fitted$predLogOdds * eta

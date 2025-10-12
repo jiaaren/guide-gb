@@ -10,11 +10,11 @@ x <- BreastCancer[,2:10]
 y <- as.integer(BreastCancer$Class == 'malignant')
 guide_path <- '/Users/jkhong/Desktop/guide-gb/guide'
 run_folder <- '/Users/jkhong/Desktop/guide-gb/guide_run'
-eta <- 0.05
+eta <- 0.01
 iterations <- 1000
 epsilon <- 1e-5
 
-model <- guide_gb(x, y, guide_path, run_folder, eta=0.05, iterations=1000, type = "binary_classification")
+model <- guide_gb(x, y, guide_path, run_folder, eta=eta, iterations=iterations, type = "binary_classification")
 pred <- predict(model, x)
 # train rmse
 rmse(pred - y)
