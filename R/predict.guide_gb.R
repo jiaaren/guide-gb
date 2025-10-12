@@ -28,10 +28,6 @@ make_regressor_prediction <- function(fit, x) {
 # sense check over predictions
 # apply(iteration_pred, 2, function(pred){ rmse(pred - y) }) - model$fit$err
 
-fit <- model$fit
-
-make_prediction_tree_classifier(x, fit$trees[[1]])
-tree_func <- fit$trees[[1]]
 
 make_prediction_tree_classifier <- function(x, tree_func) {
   # Create myfunc inside an environment where bip exists
