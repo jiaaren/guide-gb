@@ -19,8 +19,9 @@ Gradient Boosting with GUIDE
 
 
 # Limitations of GUIDE
-- File I/O - very slow in fitting subsequent trees
+- File I/O - very slow in fitting subsequent trees, especially for larger datasets
 - Current implementation stores the trees in the form of functions, for regression, initial testing was performed using terminal nodes with linear predictions (regression in terminal nodes) instead of constant, while classification used constant prediction. As the `.R` code output provides a vector as the result, the length of output would be dynamic. The type of output cannot be known dynamically as the `.R` code output does not specify name of the prediction output, i.e. node or prediction amount. Currently, two functions are used to make predictions, `make_prediction_tree_regressor` and `make_prediction_tree_regressor`, where they can actually be combined as one.
+- As I am not making modifications to the GUIDE algorithm, there is a tendency to treat the GUIDE executable as a 'black-box'. Hence I may only be limited to improvements / optimisations surrounding  ensemble construction, rather than individual tree formation.
 
 # Notes
 ## Classification tree map
@@ -31,3 +32,7 @@ Gradient Boosting with GUIDE
 # Improvements
 1. Investigate improvements over data structure for treemap and `map_logodds` function.
 2. Include parameter in classification prediction to output as label or probability.
+3. Consider adding multiclass classification
+4. Adding subset training
+
+
