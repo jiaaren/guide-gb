@@ -10,6 +10,4 @@ NA
 7 Bl.cromatin n
 8 Normal.nucleoli n
 9 Mitoses n
-10 Class x
-11 train w
-12 resid d
+10 resid d
