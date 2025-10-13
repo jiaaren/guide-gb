@@ -35,4 +35,12 @@ Gradient Boosting with GUIDE
 3. Consider adding multiclass classification
 4. Adding subset training
 
+# Experimentation
+1. Experiment with GUIDE parameters:
+    ```
+    Choose type of regression model:
+    1=linear, 2=quantile, 3=Poisson, 4=censored response,
+    5=multiresponse or itemresponse, 6=longitudinal data (with T variables),
+    7=binary logistic regression.
+    ```
 
