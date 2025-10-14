@@ -1,13 +1,13 @@
 library(gbm)
 library(xgboost)
 library(catboost)
-setwd("/home/jiaren/guide-gb/")
+setwd("/Users/jkhong/Desktop/guide-gb/")
 # Load functions for GUIDE-GB
 for (f in list.files("R", full.names = TRUE)) {
   source(f)
 }
 
-data <- read.csv("/home/jiaren/guide-gb/data/reg_boston/boston.csv", header = TRUE)
+data <- read.csv("/Users/jkhong/Desktop/guide-gb/data/reg_boston/boston.csv", header = TRUE)
 x <- data[,1:13]
 # convert all columns to numeric
 for (col in colnames(x)) {
@@ -23,7 +23,7 @@ DT <- 0.5 # decision threshold
 SEED <- 456
 eta <- 0.05
 iterations <- 1000
-max_depth <- 3
+max_depth <- 4
 min_child_weight <- 2
 
 # define train test splits
@@ -34,15 +34,15 @@ test_x  <- x[folds == k, ]
 test_y  <- y[folds == k]
 
 # train and predict using guide-gb
-guide_path <- '/home/jiaren/guide-gb/guide'
-run_folder <- '/home/jiaren/guide-gb/guide_run'
+guide_path <- '/Users/jkhong/Desktop/guide-gb/guide'
+run_folder <- '/Users/jkhong/Desktop/guide-gb/guide_run'
 
 # ...existing code...
-setwd("/home/jiaren/guide-gb/tests/2_regression/boston")
-conn <- file("result_regression.csv", open="at")
-writeLines("model,fold,RMSE_,MAE_,R2", conn)
-update_matrix_regression <- function(model_name, fold, rmse_, mae_, r2, conn=conn) {
-  writeLines(paste(model_name, fold, sprintf("%.6f", rmse_), sprintf("%.6f", mae_), sprintf("%.6f", r2), sep=","), conn)
+setwd("/Users/jkhong/Desktop/guide-gb/tests/2_regression/boston")
+conn <- file("result_regression.csv", open="wt")
+writeLines("model,fold,RMSE_test,RMSE_train,MAE_,R2,nrow_test,nrow_train", conn)
+update_matrix_regression <- function(model_name, fold, rmse_test, rmse_train, mae_, r2, nrow_test, nrow_train, conn=conn) {
+  writeLines(paste(model_name, fold, sprintf("%.6f", rmse_test), sprintf("%.6f", rmse_train), sprintf("%.6f", mae_), sprintf("%.6f", r2), sprintf("%.6f", nrow_test), sprintf("%.6f", nrow_train), sep=","), conn)
 }
 
 for (k in sort(unique(folds))) {
@@ -61,7 +61,9 @@ for (k in sort(unique(folds))) {
   rmse_ <- sqrt(mean((pred_gbguide - test_y)^2))
   mae_  <- mean(abs(pred_gbguide - test_y))
   r2   <- 1 - sum((pred_gbguide - test_y)^2) / sum((test_y - mean(test_y))^2)
-  update_matrix_regression("guide-gb", k, rmse_, mae_, r2, conn)
+  train_pred_gbguide <- predict(model, train_x)
+  train_rmse_ <- sqrt(mean((train_pred_gbguide - train_y)^2))
+  update_matrix_regression("guide-gb", k, rmse_, train_rmse_, mae_, r2, nrow(test_x), nrow(train_x), conn)
 
   # gbm (regression)
   set.seed(SEED)
@@ -78,31 +80,35 @@ for (k in sort(unique(folds))) {
   rmse_ <- sqrt(mean((pred_gbm - test_y)^2))
   mae_  <- mean(abs(pred_gbm - test_y))
   r2   <- 1 - sum((pred_gbm - test_y)^2) / sum((test_y - mean(test_y))^2)
-  update_matrix_regression("gbm", k, rmse_, mae_, r2, conn)
+  train_pred_gbm <- predict(gbmmodel, train_x, n.trees = iterations)
+  train_rmse_ <- sqrt(mean((train_pred_gbm - train_y)^2))
+  update_matrix_regression("gbm", k, rmse_, train_rmse_, mae_, r2, nrow(test_x), nrow(train_x), conn)
 
   # xgboost (regression)
   options(na.action = "na.pass")
   train_x2 <- model.matrix(~ . - 1, data = train_x, na.action=na.pass)
-  test_x2  <- model.matrix(~ . - 1, data = test_x)
+  test_x2  <- model.matrix(~ . - 1, data = test_x, na.action=na.pass)
   options(na.action = "na.omit")
 
   dtrain <- xgb.DMatrix(data = as.matrix(train_x2), label = train_y)
   dtest  <- xgb.DMatrix(data = as.matrix(test_x2),  label = test_y)
   params <- list(objective = "reg:squarederror", eta=eta, max_depth=max_depth,
-                 min_child_weight=min_child_weight, eval_metric = "rmse_")
+                 min_child_weight=min_child_weight, eval_metric = "rmse")
   set.seed(SEED)
   xgbmodel <- xgb.train(params = params, data = dtrain, nrounds = iterations)
   pred_xgb <- predict(xgbmodel, dtest)
   rmse_ <- sqrt(mean((pred_xgb - test_y)^2))
   mae_  <- mean(abs(pred_xgb - test_y))
   r2   <- 1 - sum((pred_xgb - test_y)^2) / sum((test_y - mean(test_y))^2)
-  update_matrix_regression("xgboost", k, rmse_, mae_, r2, conn)
+  train_pred_xgb <- predict(xgbmodel, dtrain)
+  train_rmse_ <- sqrt(mean((train_pred_xgb - train_y)^2))
+  update_matrix_regression("xgboost", k, rmse_, train_rmse_, mae_, r2, nrow(dtest), nrow(dtrain), conn)
 
   # catboost (regression)
   train_pool <- catboost.load_pool(data = train_x, label = train_y)
   test_pool  <- catboost.load_pool(data = test_x,  label = test_y)
   catmodel <- catboost.train(train_pool, NULL,
-                             params = list(loss_function = 'RMSE_',
+                             params = list(loss_function = 'RMSE',
                                            iterations = iterations,
                                            learning_rate = eta,
                                            depth = max_depth,
@@ -111,14 +117,16 @@ for (k in sort(unique(folds))) {
   rmse_ <- sqrt(mean((pred_cat - test_y)^2))
   mae_  <- mean(abs(pred_cat - test_y))
   r2   <- 1 - sum((pred_cat - test_y)^2) / sum((test_y - mean(test_y))^2)
-  update_matrix_regression("catboost", k, rmse_, mae_, r2, conn)
+  train_pred_cat <- catboost.predict(catmodel, train_pool, prediction_type = 'RawFormulaVal')
+  train_rmse_ <- sqrt(mean((train_pred_cat - train_y)^2))
+  update_matrix_regression("catboost", k, rmse_, train_rmse_, mae_, r2, nrow(test_pool), nrow(train_pool), conn)
 
   # save models
   saveRDS(model, file = paste0("model_guide_gb_fold_", k, ".rds"))
   saveRDS(gbmmodel, file = paste0("model_gbm_fold_", k, ".rds"))
   saveRDS(xgbmodel, file = paste0("model_xgb_fold_", k, ".rds"))
   saveRDS(catmodel, file = paste0("model_catboost_fold_", k, ".rds"))
-break
+
 }
 close(conn)
 
