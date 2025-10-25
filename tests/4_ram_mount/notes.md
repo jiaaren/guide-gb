@@ -1,0 +1,3 @@
+- Mounting to RAM does not improve performance of model fitting
+- Bottleneck does not seem to be I/O (especially for smaller files)
+- Bottleneck resides in computation and construction of GUIDE trees
