@@ -1,3 +1,23 @@
+make_prediction_tree_a <- function(x, tree_func) {
+  # initialise
+  n <- nrow(x)
+  node <- numeric(n)
+  pred <- numeric(n)
+  # obtain function body and environment
+  func_body <- body(tree_func)
+  func_enclosure <- environment(tree_func)
+  for(i in 1:n) {
+    # performing lapply is faster than as.list()
+    # row_list <- as.list(x[i, ])
+    row_list <- lapply(x, `[`, i)
+    # evaluate the function body in an environment
+    tmp <- eval(func_body, envir = row_list, enclos = func_enclosure)
+    node[i] <- as.numeric(tmp[1])
+    pred[i] <- as.numeric(tmp[2])
+  }
+  return (data.frame(node, pred))
+}
+
 make_prediction_tree_regressor <- function(x, tree_func) {
   # Create myfunc inside an environment where bip exists
   environment(tree_func) <- environment()
@@ -19,14 +39,18 @@ make_prediction_tree_regressor <- function(x, tree_func) {
 
 make_regressor_prediction <- function(fit, x) {
   # explore how to use node and fitvar next time
-  results = lapply(fit$trees, function(f) make_prediction_tree_regressor(x, f)$pred)
-  results = do.call(cbind, results)
-  mult = sweep(results, 2, fit$eta, `*`)
+  results <- lapply(fit$trees, function(f) make_prediction_tree_regressor(x, f)$pred)
+  results <- do.call(cbind, results)
+  mult <- sweep(results, 2, fit$eta, `*`)
   rowSums(mult) + fit$basepred
 }
-# iteration_pred <- t(apply((sweep(results, 2, model$fit$eta, `*`)), 1, cumsum) + mean(y))
-# sense check over predictions
-# apply(iteration_pred, 2, function(pred){ rmse(pred - y) }) - model$fit$err
+
+## visualising benefits of early stopping
+# mult <- mult + fit$basepred
+# iteration_pred <- t(apply(mult, 1, cumsum) + fit$basepred)
+# # sense check over predictions
+# res <- apply(iteration_pred, 2, function(pred){ rmse(pred - y) })
+# round(res - fit$err, 2)
 
 
 make_prediction_tree_classifier <- function(x, tree_func) {
@@ -57,7 +81,7 @@ map_logodds <- function(tree_map, nodes) {
 # returns a matrix of gradients, rows = observations, cols = iterations
 get_iteration_gradients_classifier <- function(fit, x) {
   # classifier references node
-  results = lapply(fit$trees, function(f) make_prediction_tree_classifier(x, f)$node)
+  results = lapply(fit$trees, function(f) make_prediction_tree_a(x, f)$node)
   mapped_results <- mapply(map_logodds, fit$tree_maps, results, SIMPLIFY = TRUE)
   mult = sweep(mapped_results, 2, fit$eta, `*`)
   return(mult)
