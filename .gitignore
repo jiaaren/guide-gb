@@ -50,3 +50,16 @@ rsconnect/
 
 # no rds files
 *.rds
+
+# macOS
+*.DS_Store
+
+# tmp ignore
+*/2_regression/boston2/
+*/2_regression/boston3/
+*/2_regression/boston4/
+*/3_binary_classification/breastcancer2/
+*/3_binary_classification/breastcancer3/
+*/3_binary_classification/breastcancer4/
+guide_run
+guide_run2
