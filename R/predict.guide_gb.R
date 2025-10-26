@@ -18,6 +18,26 @@ make_prediction_tree_a <- function(x, tree_func) {
   return (data.frame(node, pred))
 }
 
+make_prediction_tree_b <- function(x, tree_func) {
+  # initialise
+  n <- nrow(x)
+  node <- numeric(n)
+  pred <- numeric(n)
+  # obtain function body and environment
+  func_body <- body(tree_func)
+  func_enclosure <- environment(tree_func)
+  for(i in 1:n) {
+    # performing lapply is faster than as.list()
+    # row_list <- as.list(x[i, ])
+    row_list <- lapply(x, `[`, i)
+    # evaluate the function body in an environment
+    tmp <- eval(func_body, envir = row_list, enclos = func_enclosure)
+    node[i] <- as.numeric(tmp[1])
+    pred[i] <- as.numeric(tmp[3])
+  }
+  return (data.frame(node, pred))
+}
+
 make_prediction_tree_regressor <- function(x, tree_func) {
   # Create myfunc inside an environment where bip exists
   environment(tree_func) <- environment()
@@ -37,9 +57,9 @@ make_prediction_tree_regressor <- function(x, tree_func) {
   return (data.frame(node, fitvar, pred))
 }
 
-make_regressor_prediction <- function(fit, x) {
+make_regressor_prediction <- function(fit, x, pred_func) {
   # explore how to use node and fitvar next time
-  results <- lapply(fit$trees, function(f) make_prediction_tree_regressor(x, f)$pred)
+  results <- lapply(fit$trees, function(f) pred_func(x, f)$pred)
   results <- do.call(cbind, results)
   mult <- sweep(results, 2, fit$eta, `*`)
   rowSums(mult) + fit$basepred
@@ -94,9 +114,20 @@ make_classifier_prediction <- function(fit, x) {
   return(pred)
 }
 
+get_pred_func <- function(guide_pred_type) {
+  if (guide_pred_type == "a") {
+    return(make_prediction_tree_a)
+  } else if (guide_pred_type == "b") {
+    return(make_prediction_tree_b)
+  } else {
+    stop("Unknown guide_pred_type")
+  }
+}
+
 sense_check_calc <- function(object, newdata, ...) {
+  pred_func <- get_pred_func(object$guide_pred_type)
   if (object$type == "regression") {
-    preds <- make_regressor_prediction(object$fit, x = newdata, ...)
+    preds <- make_regressor_prediction(object$fit, x = newdata, pred_func=pred_func)
     return(preds)
   }
   if (object$type == "binary_classification") {
@@ -115,8 +146,10 @@ sense_check_calc <- function(object, newdata, ...) {
 #' @return Predicted values (numeric for regression, class labels for classification).
 #' @export
 predict.guide_gb <- function(object, newdata, ...) {
+  pred_func <- get_pred_func(object$guide_pred_type)
+
   if (object$type == "regression") {
-    return(make_regressor_prediction(object$fit, x = newdata, ...))
+    return(make_regressor_prediction(object$fit, x = newdata, pred_func=pred_func, ...))
   }
   if (object$type == "binary_classification") {
     return(make_classifier_prediction(object$fit, x = newdata, ...))

@@ -12,6 +12,12 @@ Gradient Boosting with GUIDE
 1. Current version works with Version 45.1 of GUIDE
 2. Create a `guide_run` folder, within would contain:
     - the `guide` executable
+3. Before training, the `.DSC` needs to be prepared and `.in` files would need to be generated, current implementation of guide-gb references a folder which has the following files:
+    - `data_constant_exhaustive.in`
+    - `data_constant_quantiles.in`
+    - `data_poly.in`
+    - `data_stepwise.in`
+    - `data.DSC`
 
 
 # Fitting the model

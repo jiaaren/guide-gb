@@ -12,6 +12,7 @@
 #' y <- 2 + 3*x$x1 - x$x2 + rnorm(50)
 #' model <- guide_gb(x, y, type = "regression")
 #' predict(model, newdata = x)
+# source('/Users/jkhong/Desktop/guide-gb/R/predict.guide_gb.R')
 
 # metrics
 mse <- function(resid) {
@@ -46,6 +47,9 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
   err_vec <- c()
   trees <- list()
 
+  # get pred_func based on root prediction
+  # pred_func <- make_prediction_tree_a
+
   prev_train_err <- rmse(y - y_pred)
   print(paste('train rmse:', prev_train_err))
   
@@ -61,10 +65,13 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
     # fit guide tree (external call)
     exec_out <- system(paste(guide_path, '< data.in'), intern = TRUE)
     # read fitted predictions (should be on residuals)
-    fitted <- read.table('data.fitted', header = TRUE)
     code <- trim_file_at_marker('data.R')
+    # code predicted will be parsed
     eval(parse(text = code))
     trees[[it]] <- predicted
+    # read fitted from file vs parsed code
+    fitted <- read.table('data.fitted', header = TRUE)
+    # fitted <- pred_func(x, predicted) # this would return 'pred' instead of 'predicted'
     # update predictions
     y_pred <- y_pred + eta * fitted$predicted
     eta_vec[it] <- eta
@@ -168,17 +175,64 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
   ))
 }
 
-guide_gb <- function(x, y, guide_path, run_folder,
+type_map <- c(
+  constant_exhaustive = "a",
+  constant_quantiles  = "a",
+  poly1               = "b",
+  poly2               = "b",
+  stepwise            = "a"
+)
+
+guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
                     type = c("regression", "binary_classification"),
+                    complexity=c("constant_exhaustive", "constant_quantiles",
+                                "poly1", "poly2", "stepwise"),
                     eta=0.1,
+                    max_split_levels=4,
+                    min_node_size=4,
                     iterations=100,
                     epsilon=1e-5) {
   type <- match.arg(type)
+  complexity <- match.arg(complexity)
+  guide_pred_type <- type_map[[complexity]]
+
+  # validate that guide_path exists
+  if (!file.exists(guide_path)) {
+    stop("guide_path does not exist.")
+  }
+  # validate that run_folder exists, if not, create a temporary folder
+  if (is.null(run_folder)) {
+    run_folder <- tempdir()
+  }
+  if (!dir.exists(run_folder)) {
+    stop("run_folder does not exist.")
+  }
+  # only read .in file contained within the config_path
+  in_file <- paste0("data_", complexity, ".in")
+  in_file_path <- file.path(config_path, in_file)
+  if (!file.exists(in_file_path)) {
+    stop(paste("Configuration .in file does not exist at", in_file_path))
+  }
+  in_file_lines <- readLines(in_file_path)
+  # replace max split levels and min node size with user input
+  in_file_lines[grep("\\(max. no. split levels\\)", in_file_lines)] <-
+    paste0("        ", max_split_levels, "   (max. no. split levels)")
+  in_file_lines[grep("\\(min. node sample size\\)", in_file_lines)] <-
+    paste0("        ", min_node_size, "   (min. node sample size)")
+  # write modified .in file to run_folder and save in attributes
+  writeLines(in_file_lines, con = file.path(run_folder, "data.in"))
+  in_file_concat <- paste(in_file_lines, collapse = "\n")
+
+  # copy DSC file in config_path to run_folder
+  dsc_file_src <- file.path(config_path, "data.DSC")
+  if (!file.exists(dsc_file_src)) {
+    stop(paste("DSC file does not exist at", dsc_file_src))
+  }
+  file.copy(dsc_file_src, file.path(run_folder, "data.DSC"), overwrite = TRUE)
 
   if (type == "regression") {
     fit <- fit_regression(x,y,guide_path,run_folder,eta,iterations,epsilon)
   }
-
   if (type == "binary_classification") {
     fit <- fit_binary_classifier(x,y,guide_path,run_folder,eta,iterations,epsilon)
   }
@@ -188,7 +242,9 @@ guide_gb <- function(x, y, guide_path, run_folder,
     list(
       fit = fit,
       guide_path=guide_path,
-      run_folder=run_folder,
+      config_path=config_path,
+      in_file=in_file_concat,
+      guide_pred_type=guide_pred_type,
       eta=eta,
       iterations=iterations,
       epsilon=epsilon,
