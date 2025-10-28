@@ -175,6 +175,34 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
   ))
 }
 
+process_dsc_file <- function(dsc_path) {
+  # read DSC file lines
+  lines <- readLines(dsc_path)
+  lines <- trimws(lines)
+  variables <- list()
+  for (i in seq_along(lines)) {
+    # first 3 rows relate to missing value handling and rows to skip
+    if (i <= 3) next
+    # split by spaces and update list
+    parts <- unlist(strsplit(lines[i], "\\s+"))
+    var_name <- parts[2]
+    var_type <- parts[3]
+    variables[[var_name]] <- var_type
+  }
+  variables[["missing_indicator"]] <- parts[1]
+  variables
+}
+
+count_missing_values <- function(x, dsc_vars) {
+  missing_vars <- c()
+  for (col in colnames(x)) {
+    if (any(is.na(x[[col]])) && dsc_vars[[col]] == "n") {
+      missing_vars <- c(missing_vars, col)
+    }
+  }
+  missing_vars
+}
+
 type_map <- c(
   constant_exhaustive = "a",
   constant_quantiles  = "a",
@@ -229,6 +257,10 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
     stop(paste("DSC file does not exist at", dsc_file_src))
   }
   file.copy(dsc_file_src, file.path(run_folder, "data.DSC"), overwrite = TRUE)
+  dsc_vars <- process_dsc_file(dsc_file_src)
+
+  # keep track of missing values for subsequent processing for predictions
+  missing_num_vars <- count_missing_values(x, dsc_vars)
 
   if (type == "regression") {
     fit <- fit_regression(x,y,guide_path,run_folder,eta,iterations,epsilon)
@@ -244,6 +276,8 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
       guide_path=guide_path,
       config_path=config_path,
       in_file=in_file_concat,
+      dsc_vars=dsc_vars,
+      missing_num_vars=missing_num_vars,
       guide_pred_type=guide_pred_type,
       eta=eta,
       iterations=iterations,

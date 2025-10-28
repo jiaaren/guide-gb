@@ -57,6 +57,24 @@ make_prediction_tree_regressor <- function(x, tree_func) {
   return (data.frame(node, fitvar, pred))
 }
 
+# fit <- model$fit
+# pred_func <- get_pred_func(model$guide_pred_type)
+# results <- lapply(fit$trees, function(f) pred_func(test_x, f)$pred)
+# results <- do.call(cbind, results)
+
+# # cumsum results
+# mult <- sweep(results, 2, fit$eta, `*`)
+# iteration_pred <- t(apply(mult, 1, cumsum) + fit$basepred)
+# # calculate RMSE at each iteration
+# # sense check over predictions
+# res <- apply(iteration_pred, 2, function(pred){ rmse(pred - test_y) })
+# # find lowest iteration RMSE, idx
+# min(res)
+# which.min(res)
+# # round(res - fit$err, 2)
+
+
+
 make_regressor_prediction <- function(fit, x, pred_func) {
   # explore how to use node and fitvar next time
   results <- lapply(fit$trees, function(f) pred_func(x, f)$pred)
@@ -147,6 +165,12 @@ sense_check_calc <- function(object, newdata, ...) {
 #' @export
 predict.guide_gb <- function(object, newdata, ...) {
   pred_func <- get_pred_func(object$guide_pred_type)
+  for (col in object$missing_num_vars) {
+    missing_col <- paste0(col, ".NA")
+    newdata[[missing_col]] <- is.na(newdata[[col]])
+    # not sure which one is it, to inspect R generated code
+    # newdata[[missing_col]] <- ifelse(is.na(newdata[[col]]), 1, 0)
+  }
 
   if (object$type == "regression") {
     return(make_regressor_prediction(object$fit, x = newdata, pred_func=pred_func, ...))
