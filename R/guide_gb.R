@@ -112,8 +112,8 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
   # initialise predictions with log odds
   countPos <- sum(y)
   countNeg <- length(y) - countPos
-  init.log.odds <- rep(log(countPos / countNeg), length(y))
-  log.odds <- init.log.odds
+  init.log.odds <- log(countPos / countNeg)
+  log.odds <- rep(init.log.odds, length(y))
 
   # initialise return values
   eta_vec <- c()
