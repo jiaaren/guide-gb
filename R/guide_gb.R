@@ -98,6 +98,10 @@ loglik <- function(actual, pred) {
   sum(actual * log(pred) + (1 - actual) * log(1 - pred))
 }
 
+loglik2 <- function(actual, log_odds) {
+  sum(actual * log_odds - log(1 + exp(log_odds)))
+}
+
 # Handles binary cases
 # accepts when y is either 1 or 0, where positive class is assumed to be 1
 fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations, epsilon) {
@@ -108,9 +112,8 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
   # initialise predictions with log odds
   countPos <- sum(y)
   countNeg <- length(y) - countPos
-  init.log.odds <- log(countPos / countNeg)
+  init.log.odds <- rep(log(countPos / countNeg), length(y))
   log.odds <- init.log.odds
-  y_pred <- rep(1/(1+exp(-log.odds)), length(y))
 
   # initialise return values
   eta_vec <- c()
@@ -118,13 +121,14 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
   trees <- list()
   tree_maps <- list()
 
-  prev_train_err <- loglik(y, y_pred)
+  prev_train_err <- loglik2(actual = y, log_odds = log.odds)
   print(paste('train log likelihood:', prev_train_err))
   
   # iterate gradient boosting
   for (it in 1:iterations) {
     it_id <- paste('it_', it, sep = '')
     # compute residuals
+    y_pred <- 1/(1+exp(-log.odds))
     resid <- y - y_pred
     # write training data (features + residuals)
     write.csv(data.frame(x, resid = resid), 
@@ -141,22 +145,19 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
     tmp_tree_map <- list()
     for (node in unique(fitted$node)) {
       bool_node_train <- fitted$train == 'y' & fitted$node == node
-      # this should be observed instead of predicted
-      train.new.preds <- fitted$observed[bool_node_train]
       # resid would have the same values as fitted_observed
       numerator <- sum(resid[bool_node_train])
       denominator <- sum(y_pred[bool_node_train] * (1 - y_pred[bool_node_train]))
-      predLogOdds <- numerator / denominator
+      predLogOdds <- ifelse(denominator == 0, 0, numerator / denominator)
       fitted[fitted$node == node, 'predLogOdds'] <- predLogOdds
       tmp_tree_map[[as.character(node)]] <- predLogOdds
     }
     tree_maps[[it]] <- tmp_tree_map
     # update predictions
     log.odds <- log.odds + fitted$predLogOdds * eta
-    y_pred <- 1/(1+exp(-log.odds))
     eta_vec[it] <- eta
     # compute new train error if pred against true target
-    new_train_err <- loglik(y, y_pred)
+    new_train_err <- loglik2(actual = y, log_odds = log.odds)
     err_vec[it] <- new_train_err
     print(paste('train loglik after iteration', it, ':', new_train_err)) 
     # stopping criterion
