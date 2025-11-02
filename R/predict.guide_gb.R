@@ -142,16 +142,16 @@ get_pred_func <- function(guide_pred_type) {
   }
 }
 
-sense_check_calc <- function(object, newdata, ...) {
+sense_check_calc <- function(object, train_x, train_y, ...) {
   pred_func <- get_pred_func(object$guide_pred_type)
   if (object$type == "regression") {
-    preds <- make_regressor_prediction(object$fit, x = newdata, pred_func=pred_func)
+    preds <- make_regressor_prediction(object$fit, x = train_x, pred_func=pred_func)
     return(preds)
   }
   if (object$type == "binary_classification") {
-    mult = get_iteration_gradients_classifier(object$fit, newdata)
+    mult = get_iteration_gradients_classifier(object$fit, train_x)
     loglik_matrix <- t(apply(mult, 1, cumsum)) + object$fit$basepred
-    apply(loglik_matrix, 2, function(predLogOdds){ loglik2(actual = y, log_odds = predLogOdds) }) - object$fit$err
+    apply(loglik_matrix, 2, function(predLogOdds){ loglik2(actual = train_y, log_odds = predLogOdds) }) - object$fit$err
   }
 }
 
