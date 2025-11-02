@@ -151,7 +151,7 @@ sense_check_calc <- function(object, newdata, ...) {
   if (object$type == "binary_classification") {
     mult = get_iteration_gradients_classifier(object$fit, newdata)
     loglik_matrix <- t(apply(mult, 1, cumsum)) + object$fit$basepred
-    apply(loglik_matrix, 2, function(predLogOdds){ pred <- 1/(1+exp(-predLogOdds)); loglik(y, pred) }) - object$fit$err
+    apply(loglik_matrix, 2, function(predLogOdds){ loglik2(actual = y, log_odds = predLogOdds) }) - object$fit$err
   }
 }
 
