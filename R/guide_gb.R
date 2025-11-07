@@ -48,12 +48,14 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
                            early_stop_rounds = NULL, has_early_stop = FALSE, has_watchlist = FALSE,
                            fit_pred_exact = FALSE, guide_pred_type) {
   # keep track of current path and change path to run_folder
+  row.names(x) <- NULL # reset row names
   curr_path <- getwd()
   setwd(run_folder)
 
   # initialise supplementary df, used for GUIDE input
   n <- nrow(x)
-  n_val <- 0
+  supp <- data.frame(resid = rep(0, n))
+  if (is.null(bag_seed)) bag_seed <- sample.int(1e6, 1)
 
   # initialise predictions with mean of y
   pred_y <- mean(y)
@@ -61,28 +63,12 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
   prev_train_err <- mse(y, y_pred)
   print(paste("train mse:", prev_train_err))
 
-  # initialise watchlist variables
-  if (has_watchlist) {
-    n_val <- nrow(val_x)
-    idx_val_start <- n + 1
-    idx_val_end <- n + n_val
-    x <- rbind(x, val_x)
-    y <- c(y, val_y)
-    y_pred <- c(y_pred, rep(pred_y, n_val))
-  }
-  supp <- data.frame(resid = rep(0, n + n_val))
-  if (bagging || has_watchlist) supp$istrain <- 0
-  if (!bagging && has_watchlist) supp$istrain[1:n] <- 1
-  if (bagging && is.null(bag_seed)) bag_seed <- sample.int(1e6, 1)
-  print(dim(x))
-
   # initialise return values
   eta_vec <- c()
   err_vec <- c()
-  val_err_vec <- c()
   trees <- list()
 
-  # get pred_func based on root prediction, useful if fit_pred_exact is TRUE
+  # get pred_func based on root prediction
   pred_func <- get_pred_func(guide_pred_type)
 
   # iterate gradient boosting
@@ -91,14 +77,12 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
     supp$resid <- y - y_pred
     # if bagging, create istrain indicator
     if (bagging) {
-      supp$istrain <- 0
       set.seed(bag_seed + it) # ensure different seed per iteration
-      train_idx <- sample.int(n, size = floor(n * bag_fraction), replace = FALSE)
-      supp$istrain[train_idx] <- 1
+      bag_train_idx <- sample.int(n, size = floor(n * bag_fraction), replace = FALSE)
+      write.csv(cbind(x, supp)[bag_train_idx, ], file.path(run_folder, "data.csv"), row.names = FALSE)
+    } else {
+      write.csv(cbind(x, supp), file.path(run_folder, "data.csv"), row.names = FALSE)
     }
-    # write training data (features + residuals)
-    write.csv(cbind(x, supp), file.path(run_folder, "data.csv"),
-              row.names = FALSE)
     # fit guide tree (external call)
     exec_out <- system(paste(guide_path, "< data.in"), intern = TRUE)
     code <- trim_file_at_marker("data.R")
@@ -116,30 +100,9 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
     }
     eta_vec[it] <- eta
     # compute training MSE against true target
-    if (!has_watchlist) {
-      new_train_err <- mse(y, y_pred)
-      err_vec[it] <- new_train_err
-      print(paste("it", it, "train mse:", new_train_err))
-    } else {
-      # compute training and validation MSE against true target
-      train_pred <- y_pred[1:n]
-      new_train_err <- mse(y[1:n], train_pred)
-      err_vec[it] <- new_train_err
-      val_pred <- y_pred[idx_val_start:idx_val_end]
-      new_val_err <- mse(val_y, val_pred)
-      val_err_vec[it] <- new_val_err
-      # print(val_y)
-      # print(val_pred)
-      print(paste("it", it, "train mse:", new_train_err, "val mse:", new_val_err))
-      # early stopping check
-      # if (has_early_stop && it > early_stop_rounds) {
-      #   recent_val_errs <- val_err_vec[(it - early_stop_rounds):it]
-      #   if (which.min(recent_val_errs) == 1) {
-      #     print(paste("Early stopping at iteration", it))
-      #     break
-      #   }
-      # }
-    }
+    new_train_err <- mse(y, y_pred)
+    err_vec[it] <- new_train_err
+    print(paste('train mse after iteration', it, ':', new_train_err)) 
     # stopping criterion
     if (abs(new_train_err - prev_train_err) < epsilon) break
     prev_train_err <- new_train_err
@@ -158,15 +121,17 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
 # Handles binary cases
 # accepts when y is either 1 or 0, where positive class is assumed to be 1
 fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations, epsilon,
-                                  bagging, bag_fraction, bag_seed=NULL) {
+                                  bagging, bag_fraction, bag_seed=NULL, fit_pred_exact = FALSE,
+                                  val_x = NULL, val_y = NULL, early_stop_rounds = NULL,
+                                  has_early_stop = FALSE, has_watchlist = FALSE) {
   # keep track of current path and change path to run_folder
+  row.names(x) <- NULL # reset row names
   curr_path <- getwd()
   setwd(run_folder)
 
   # initialise supplementary df, used for GUIDE input
   n <- nrow(x)
   supp <- data.frame(resid = rep(0, n))
-  if (bagging) supp$istrain <- 0
   if (is.null(bag_seed)) bag_seed <- sample.int(1e6, 1)
 
   # initialise predictions with log odds
@@ -190,14 +155,12 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
     supp$resid <- y - y_pred
     # if bagging, create istrain indicator
     if (bagging) {
-      supp$istrain <- 0
       set.seed(bag_seed + it) # ensure different seed per iteration
-      train_idx <- sample.int(n, size = floor(n * bag_fraction), replace = FALSE)
-      supp$istrain[train_idx] <- 1
+      bag_train_idx <- sample.int(n, size = floor(n * bag_fraction), replace = FALSE)
+      write.csv(cbind(x, supp)[bag_train_idx, ], file.path(run_folder, "data.csv"), row.names = FALSE)
+    } else {
+      write.csv(cbind(x, supp), file.path(run_folder, "data.csv"), row.names = FALSE)
     }
-    # write training data (features + residuals)
-    write.csv(cbind(x, supp), file.path(run_folder, "data.csv"),
-              row.names = FALSE)
     # fit guide tree (external call)
     exec_out <- system(paste(guide_path, "< data.in"), intern = TRUE)
     code <- trim_file_at_marker("data.R")
@@ -205,7 +168,13 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
     eval(parse(text = code))
     trees[[it]] <- predicted
     # read fitted predictions (should be on residuals)
-    fitted <- read.table("data.fitted", header = TRUE)
+    if (fit_pred_exact) fitted <- read.table("data.fitted", header = TRUE)
+    else {
+      fitted <- make_prediction_tree_a(x, predicted)
+      fitted$train <- "n"
+      if (!bagging) fitted$train <- "y"
+      else fitted$train[bag_train_idx] <- "y"
+    }
     # update tree map
     tmp_tree_map <- list()
     for (node in unique(fitted$node)) {
@@ -298,6 +267,7 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
                      iterations = 100,
                      bag_fraction = 1.0,
                      bag_seed = NULL,
+                     epsilon = 1e-5,
                      val_x = NULL, val_y = NULL,
                      early_stop_rounds = NULL,
                      fit_pred_exact = FALSE) {
@@ -399,7 +369,7 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
     stop(paste("DSC file does not exist at", dsc_file_src))
   }
   dsc_lines <- dsc_clean(readLines(dsc_file_src))
-  if (bagging || has_watchlist) dsc_lines <- dsc_add_weight(dsc_lines)
+  # if (bagging || has_watchlist) dsc_lines <- dsc_add_weight(dsc_lines)
   # write modified DSC file to run_folder
   writeLines(dsc_lines, con = file.path(run_folder, "data.DSC"))
   dsc_vars <- dsc_get_variables(dsc_lines)
