@@ -44,16 +44,16 @@ trim_file_at_marker <- function(file, marker = "## end of function") {
 
 # fitting regressor model
 fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilon,
-                           bagging, bag_fraction, bag_seed=NULL, fit_pred_exact=FALSE, guide_pred_type) {
+                           bagging, bag_fraction, bag_seed=NULL, val_x = NULL, val_y = NULL,
+                           early_stop_rounds = NULL, has_early_stop = FALSE, has_watchlist = FALSE,
+                           fit_pred_exact = FALSE, guide_pred_type) {
   # keep track of current path and change path to run_folder
   curr_path <- getwd()
   setwd(run_folder)
 
   # initialise supplementary df, used for GUIDE input
   n <- nrow(x)
-  supp <- data.frame(resid = rep(0, n))
-  if (bagging) supp$istrain <- 0
-  if (is.null(bag_seed)) bag_seed <- sample.int(1e6, 1)
+  n_val <- 0
 
   # initialise predictions with mean of y
   pred_y <- mean(y)
@@ -61,12 +61,28 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
   prev_train_err <- mse(y, y_pred)
   print(paste("train mse:", prev_train_err))
 
+  # initialise watchlist variables
+  if (has_watchlist) {
+    n_val <- nrow(val_x)
+    idx_val_start <- n + 1
+    idx_val_end <- n + n_val
+    x <- rbind(x, val_x)
+    y <- c(y, val_y)
+    y_pred <- c(y_pred, rep(pred_y, n_val))
+  }
+  supp <- data.frame(resid = rep(0, n + n_val))
+  if (bagging || has_watchlist) supp$istrain <- 0
+  if (!bagging && has_watchlist) supp$istrain[1:n] <- 1
+  if (bagging && is.null(bag_seed)) bag_seed <- sample.int(1e6, 1)
+  print(dim(x))
+
   # initialise return values
   eta_vec <- c()
   err_vec <- c()
+  val_err_vec <- c()
   trees <- list()
 
-  # get pred_func based on root prediction
+  # get pred_func based on root prediction, useful if fit_pred_exact is TRUE
   pred_func <- get_pred_func(guide_pred_type)
 
   # iterate gradient boosting
@@ -100,9 +116,30 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
     }
     eta_vec[it] <- eta
     # compute training MSE against true target
-    new_train_err <- mse(y, y_pred)
-    err_vec[it] <- new_train_err
-    print(paste('train mse after iteration', it, ':', new_train_err)) 
+    if (!has_watchlist) {
+      new_train_err <- mse(y, y_pred)
+      err_vec[it] <- new_train_err
+      print(paste("it", it, "train mse:", new_train_err))
+    } else {
+      # compute training and validation MSE against true target
+      train_pred <- y_pred[1:n]
+      new_train_err <- mse(y[1:n], train_pred)
+      err_vec[it] <- new_train_err
+      val_pred <- y_pred[idx_val_start:idx_val_end]
+      new_val_err <- mse(val_y, val_pred)
+      val_err_vec[it] <- new_val_err
+      # print(val_y)
+      # print(val_pred)
+      print(paste("it", it, "train mse:", new_train_err, "val mse:", new_val_err))
+      # early stopping check
+      # if (has_early_stop && it > early_stop_rounds) {
+      #   recent_val_errs <- val_err_vec[(it - early_stop_rounds):it]
+      #   if (which.min(recent_val_errs) == 1) {
+      #     print(paste("Early stopping at iteration", it))
+      #     break
+      #   }
+      # }
+    }
     # stopping criterion
     if (abs(new_train_err - prev_train_err) < epsilon) break
     prev_train_err <- new_train_err
@@ -261,10 +298,12 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
                      iterations = 100,
                      bag_fraction = 1.0,
                      bag_seed = NULL,
-                     epsilon = 1e-5,
+                     val_x = NULL, val_y = NULL,
+                     early_stop_rounds = NULL,
                      fit_pred_exact = FALSE) {
   type <- match.arg(type)
   complexity <- match.arg(complexity)
+  # this is only required if fit_pred_exact is TRUE
   guide_pred_type <- type_map[[complexity]]
   # validate that bag_fraction is more than 0 and less than or equal to 1
   if (bag_fraction <= 0 || bag_fraction > 1) {
@@ -281,6 +320,52 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
       stop("For binary_classification, y must contain only 0 and 1 values.")
     }
   }
+  # check if validation set is provided, raise error if only one of val_x and val_y is provided
+  has_watchlist <- !is.null(val_x) && !is.null(val_y)
+  has_early_stop <- !is.null(early_stop_rounds)
+  if (xor(is.null(val_x), is.null(val_y))) {
+    stop("Both val_x and val_y must be provided for validation set.")
+  }
+  # TODO: next time implement auto splitting of training and validation set
+  # if early_stop_round is provided, validate that watchlist is provided
+  if (!is.null(early_stop_rounds) && !has_watchlist) {
+    stop("Early_stop_rounds is provided, val_x and val_y must be provided.")
+  }
+  # Validate validation set structure if provided
+  if (has_watchlist) {
+    # Check same number of columns
+    if (ncol(val_x) != ncol(x)) {
+      stop("val_x must have the same number of columns as x.")
+    }
+    # Check same column names
+    if (!all(colnames(val_x) == colnames(x))) {
+      stop("val_x must have the same column names as x in the same order.")
+    }
+    # Check val_y length matches val_x rows
+    if (length(val_y) != nrow(val_x)) {
+      stop("Length of val_y must match number of rows in val_x.")
+    }
+    # For binary classification, check val_y contains only 0 and 1
+    if (type == "binary_classification" && !all(val_y %in% c(0, 1))) {
+      stop("For binary_classification, val_y must contain only 0 and 1 values.")
+    }
+    if (nrow(val_x) == 0) {
+      stop("Validation set (val_x) cannot be empty.")
+    }
+  }
+  # Validate early_stop_rounds value
+  if (has_early_stop) {
+    if (!is.numeric(early_stop_rounds) || length(early_stop_rounds) != 1) {
+      stop("early_stop_rounds must be a single numeric value.")
+    }
+    if (early_stop_rounds < 1) {
+      stop("early_stop_rounds must be at least 1.")
+    }
+    if (early_stop_rounds >= iterations) {
+      warning("early_stop_rounds is >= iterations.")
+    }
+  }
+
   # validate that guide_path exists
   if (!file.exists(guide_path)) {
     stop("guide_path does not exist.")
@@ -314,7 +399,7 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
     stop(paste("DSC file does not exist at", dsc_file_src))
   }
   dsc_lines <- dsc_clean(readLines(dsc_file_src))
-  if (bagging) dsc_lines <- dsc_add_weight(dsc_lines)
+  if (bagging || has_watchlist) dsc_lines <- dsc_add_weight(dsc_lines)
   # write modified DSC file to run_folder
   writeLines(dsc_lines, con = file.path(run_folder, "data.DSC"))
   dsc_vars <- dsc_get_variables(dsc_lines)
@@ -334,6 +419,11 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
                           bagging = bagging,
                           bag_fraction = bag_fraction,
                           bag_seed = bag_seed,
+                          val_x = val_x,
+                          val_y = val_y,
+                          early_stop_rounds = early_stop_rounds,
+                          has_early_stop = has_early_stop,
+                          has_watchlist = has_watchlist,
                           fit_pred_exact = fit_pred_exact,
                           guide_pred_type = guide_pred_type)
   }
@@ -346,7 +436,12 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
                                  epsilon = epsilon,
                                  bagging = bagging,
                                  bag_fraction = bag_fraction,
-                                 bag_seed = bag_seed)
+                                 bag_seed = bag_seed,
+                                 val_x = val_x,
+                                 val_y = val_y,
+                                 early_stop_rounds = early_stop_rounds,
+                                 has_early_stop = has_early_stop,
+                                 has_watchlist = has_watchlist)
   }
   # Add attributes
   structure(
