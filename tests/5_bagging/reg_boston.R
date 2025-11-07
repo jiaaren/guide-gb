@@ -12,7 +12,7 @@ guide_path <- '/Users/jkhong/Desktop/guide-gb/guide'
 run_folder <- '/Users/jkhong/Desktop/guide-gb/_guide_run'
 config_path <- '/Users/jkhong/Desktop/guide-gb/data/reg_boston/in'
 eta <- 0.05
-iterations <- 1000
+iterations <- 500
 epsilon <- 1e-5
 
 # test using split of train and test data
@@ -31,7 +31,8 @@ trainy <- y[folds != i]
 start <- Sys.time()
 model <- guide_gb(train, trainy, guide_path=guide_path, config_path=config_path,
                    run_folder=run_folder, type="regression", complexity="constant_exhaustive",
-                   max_split_levels=4, min_node_size=2, iterations=iterations, bag_fraction=0.5, bag_seed=123)
+                   max_split_levels=4, min_node_size=2, iterations=iterations, bag_fraction=0.5, bag_seed=456,
+                   fit_pred_exact = TRUE)
 end <- Sys.time()
 end - start
 pred <- predict(model, test)
@@ -46,15 +47,15 @@ round(res, 6)
 
 
 # output graph of fitted vs test rmse to determine if early stopping is beneficial
-preds_matrix <- predict(model, newdata = train, n_trees = 1:iterations)
-preds_matrix_test <- predict(model, newdata = test, n_trees = 1:iterations)
+preds_matrix <- predict(model, newdata = train, n_trees = 1:model$fit$iterations)
+preds_matrix_test <- predict(model, newdata = test, n_trees = 1:model$fit$iterations)
 rmse_train <- apply(preds_matrix, 2, function(pred){ rmse(pred - trainy) })
 rmse_test <- apply(preds_matrix_test, 2, function(pred){ rmse(pred - testy) })
-plot(1:iterations, rmse_train, type='l', col='blue', ylim=range(c(rmse_train, rmse_test)), ylab='RMSE', xlab='Number of Trees', main='Train vs Test RMSE')
-lines(1:iterations, rmse_test, col='red')
+plot(1:model$fit$iterations, rmse_train, type='l', col='blue', ylim=range(c(rmse_train, rmse_test)), ylab='RMSE', xlab='Number of Trees', main='Train vs Test RMSE')
+lines(1:model$fit$iterations, rmse_test, col='red')
 legend("topright", legend=c("Train RMSE", "Test RMSE"), col=c("blue", "red"), lty=1)
 
-plot(1:iterations, rmse_test, col='red', type='l', ylim=c(median(rmse_test) - 0.1, median(rmse_test) + 0.1),
+plot(1:model$fit$iterations, rmse_test, col='red', type='l', ylim=c(median(rmse_test) - 0.1, median(rmse_test) + 0.1),
      ylab='Test RMSE', xlab='Number of Trees', main='Test RMSE with Early Stopping')
 
 best_rmse_idx <- which.min(rmse_test)

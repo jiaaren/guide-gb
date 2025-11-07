@@ -163,6 +163,10 @@ sense_check_calc <- function(object, train_x, train_y, ...) {
 predict.guide_gb <- function(object, newdata, n_trees = NULL, ...) {
   pred_func <- get_pred_func(object$guide_pred_type)
   n_trees <- n_trees %||% object$fit$iterations
+  # raise error if n_trees exceeds fitted iterations
+  if (max(n_trees) > object$fit$iterations) {
+    stop(paste(max(n_trees), "n_trees exceeds fitted iterations of", object$fit$iterations))
+  }
   # handle missingness indicators
   for (col in object$missing_num_vars) {
     missing_col <- paste0(col, ".NA")
