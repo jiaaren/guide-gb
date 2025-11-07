@@ -1,0 +1,313 @@
+             GGG   U   U  I  DDDD   EEEE
+            G   G  U   U  I  D   D  E
+            G      U   U  I  D   D  E
+            G  GG  U   U  I  D   D  EEE
+            G   G  U   U  I  D   D  E
+            G   G  U   U  I  D   D  E
+             GGG    UUU   I  DDDD   EEEE
+   
+ GUIDE Classification and Regression Trees and Forests
+ Version 45.2 (Build date: October 5, 2025)        
+ Compiled with NAG Fortran 7.2 on macOS Sequoia 15.6.1 for Apple ARM processors  
+ Copyright (c) 1997-2023 Wei-Yin Loh. All rights reserved.
+ This software is based upon work partially supported by the U.S. Army Research Office,
+ National Science Foundation, National Institutes of Health,
+ Bureau of Labor Statistics, USDA Economic Research Service, and Eli Lilly.
+  
+ This job was started on 11/07/25 at 23:43
+  
+ Least squares regression tree
+ No pruning
+ DSC file: data1.DSC
+ Training sample file: data1.csv
+ Missing value code: NA
+ Records in data file start on line 2
+ 13 N variables changed to S
+ D variable is resid
+ Piecewise constant model
+ Number of records in data file: 405
+ Length of longest entry in data file: 20
+  
+ Summary information for training sample of size 202 (excluding observations
+  with non-positive weight or missing values in d, e, t, r or z variables)
+ d=dependent, b=split and fit cat variable using indicator variables,
+ c=split-only categorical, i=fit-only categorical (via indicators),
+ s=split-only numerical, n=split and fit numerical, f=fit-only numerical,
+ m=missing-value flag variable, p=periodic variable, w=weight
+                                                  #Codes/           
+                                                  Levels/           
+  Column  Name            Minimum      Maximum    Periods   #Missing
+       1  crim       s   0.1096E-01    67.92    
+       2  zn         s    0.000        95.00    
+       3  indus      s   0.7400        27.74    
+       4  chas       s    0.000        1.000    
+       5  nox        s   0.3890       0.8710    
+       6  rm         s    3.863        8.780    
+       7  age        s    2.900        100.0    
+       8  dis        s    1.137        10.59    
+       9  rad        s    1.000        24.00    
+      10  tax        s    188.0        711.0    
+      11  ptratio    s    12.60        22.00    
+      12  black      s    2.600        396.9    
+      13  lstat      s    1.920        37.97    
+      14  resid      d   -4.511        2.790    
+      15  istrain    w    1.000        1.000                          constant
+  
+ Numbers of N, F, S, and P below exclude constant variables
+      Total  #cases w/   #missing
+     #cases    miss. D  ord. vals   #X-var   #N-var   #F-var   #S-var
+        405          0          0        0        0        0       13
+     #P-var   #M-var   #B-var   #C-var   #I-var
+          0        0        0        0        0
+ Weight variable istrain in column: 15
+ Number of cases used for training: 202
+ Number of cases excluded due to 0 W or missing D variable: 203
+  
+ Nodewise interaction tests on all variables
+ Split values for N and S variables based on exhaustive search
+ Max number of interaction splits: 100
+ Maximum number of split levels: 4
+ Minimum node sample size: 2
+ Ranks of variables and their 1-df chi-squared values at root node
+      1  0.1782E+01   nox
+      2  0.1603E+01   age
+      3  0.1400E+01   chas
+      4  0.1232E+01   dis
+      5  0.1010E+01   crim
+      6  0.8647E+00   rad
+      7  0.6268E+00   tax
+      8  0.2528E+00   zn
+      9  0.1616E+00   black
+     10  0.1134E+00   indus
+     11  0.8788E-01   lstat
+     12  0.6399E-01   rm
+     13  0.5574E-02   ptratio
+
+  
+ Structure of final tree. Each terminal node is marked with a T.
+  
+ D-mean is weighted mean of resid in the node
+ Cases fit give the number of cases used to fit node
+ MSE is residual sum of squares divided by number of cases in node
+        Node    Total    Cases Matrix    Node      Node      Split          Interacting
+        label   cases      fit  rank    D-mean     MSE       variable       variable
+           1      202      202     1 -6.332E-02  1.285E+00   nox 
+           2      184      184     1 -3.977E-02  1.225E+00   dis 
+           4       59       59     1  8.532E-02  1.194E+00   tax 
+           8       20       20     1  6.090E-01  1.357E+00   black 
+          16T      13       13     1  3.546E-01  1.609E+00   black 
+          17T       7        7     1  1.082E+00  6.784E-01   dis 
+           9       39       39     1 -1.832E-01  9.256E-01   indus 
+          18T      37       37     1 -1.536E-01  9.446E-01   age 
+          19T       2        2     1 -7.317E-01  5.333E-01   - 
+           5      125      125     1 -9.881E-02  1.239E+00   rad 
+          10        6        6     1 -5.982E-01  3.937E+00   crim 
+          20T       4        4     1  2.273E-01  4.243E-01   - 
+          21T       2        2     1 -2.249E+00  1.023E+01   - 
+          11      119      119     1 -7.363E-02  1.121E+00   rad 
+          22T      26       26     1  1.159E-01  8.177E-01   indus 
+          23T      93       93     1 -1.266E-01  1.203E+00   crim 
+           3       18       18     1 -3.041E-01  1.938E+00   rm 
+           6       16       16     1 -1.675E-03  1.253E+00   lstat 
+          12        8        8     1  2.955E-01  1.060E+00   nox 
+          24T       6        6     1 -2.935E-02  5.332E-02   crim 
+          25T       2        2     1  1.270E+00  4.617E+00   - 
+          13        8        8     1 -2.989E-01  1.423E+00   age 
+          26T       5        5     1 -5.968E-01  2.131E+00   crim 
+          27T       3        3     1  1.976E-01  1.273E-01   - 
+           7T       2        2     1 -2.724E+00  9.875E-01   - 
+  
+ Number of terminal nodes of final tree: 13
+ Total number of nodes of final tree: 25
+ Second best split variable (based on curvature test) at root node is age
+  
+ Regression tree:
+  
+ Node 1: nox <= 0.71550000
+   Node 2: dis <= 2.5005500
+     Node 4: tax <= 420.00000
+       Node 8: black <= 393.37000
+         Node 16: resid-mean = 0.35456007
+       Node 8: black > 393.37000 or NA
+         Node 17: resid-mean = 1.0815027
+     Node 4: tax > 420.00000 or NA
+       Node 9: indus <= 24.815000
+         Node 18: resid-mean = -0.15358347
+       Node 9: indus > 24.815000 or NA
+         Node 19: resid-mean = -0.73170537
+   Node 2: dis > 2.5005500 or NA
+     Node 5: rad <= 1.5000000
+       Node 10: crim <= 0.41445000E-01
+         Node 20: resid-mean = 0.22733088
+       Node 10: crim > 0.41445000E-01 or NA
+         Node 21: resid-mean = -2.2491266
+     Node 5: rad > 1.5000000 or NA
+       Node 11: rad <= 3.5000000
+         Node 22: resid-mean = 0.11587577
+       Node 11: rad > 3.5000000 or NA
+         Node 23: resid-mean = -0.12660725
+ Node 1: nox > 0.71550000 or NA
+   Node 3: rm <= 6.6545000
+     Node 6: lstat <= 15.965000
+       Node 12: nox <= 0.82050000
+         Node 24: resid-mean = -0.29350692E-01
+       Node 12: nox > 0.82050000 or NA
+         Node 25: resid-mean = 1.2701367
+     Node 6: lstat > 15.965000 or NA
+       Node 13: age <= 98.900000
+         Node 26: resid-mean = -0.59675840
+       Node 13: age > 98.900000 or NA
+         Node 27: resid-mean = 0.19761017
+   Node 3: rm > 6.6545000 or NA
+     Node 7: resid-mean = -2.7239329
+ 
+ ***************************************************************
+ Predictor means are the weighted means.
+  
+ WARNING: p-values below not adjusted for split search. For a bootstrap solution see:
+  
+ 1. Loh et al. (2016), "Identification of subgroups with differential treatment effects
+ for longitudinal and multiresponse variables", Statistics in Medicine, v.35, 4837-4855.
+  
+ 2. Loh et al. (2019), "Subgroups from regression trees with adjustment for prognostic
+ effects and post-selection inference", Statistics in Medicine, v.38, 545-557.
+  
+ 3. Loh and Zhou (2020), "The GUIDE approach to subgroup identification",
+ in "Design and Analysis of Subgroups with Biopharmaceutical Applications", Springer, pp.147-165.
+  
+Node 1: Intermediate node
+ A case goes into Node 2 if nox <= 0.71550000
+ nox mean = 0.55056287
+ Coefficients of weighted least squares regression function and weighted means:
+ Regressor    Coefficient  t-stat      p-value
+ Constant    -0.6332E-01  -0.7959        0.000    
+ ----------------------------
+Node 2: Intermediate node
+ A case goes into Node 4 if dis <= 2.5005500
+ dis mean = 4.0575516
+ ----------------------------
+Node 4: Intermediate node
+ A case goes into Node 8 if tax <= 420.00000
+ tax mean = 523.57627
+ ----------------------------
+Node 8: Intermediate node
+ A case goes into Node 16 if black <= 393.37000
+ black mean = 371.25100
+ ----------------------------
+Node 16: Terminal node
+ Coefficients of weighted least squares regression function and weighted means:
+ Regressor    Coefficient  t-stat      p-value
+ Constant     0.3546        1.049        0.000    
+ resid mean = 0.354560
+ ----------------------------
+Node 17: Terminal node
+ Coefficients of weighted least squares regression function and weighted means:
+ Regressor    Coefficient  t-stat      p-value
+ Constant      1.082        3.752        0.000    
+ resid mean = 1.08150
+ ----------------------------
+Node 9: Intermediate node
+ A case goes into Node 18 if indus <= 24.815000
+ indus mean = 19.274615
+ ----------------------------
+Node 18: Terminal node
+ Coefficients of weighted least squares regression function and weighted means:
+ Regressor    Coefficient  t-stat      p-value
+ Constant    -0.1536      -0.9745        0.000    
+ resid mean = -0.153583
+ ----------------------------
+Node 19: Terminal node
+ Coefficients of weighted least squares regression function and weighted means:
+ Regressor    Coefficient  t-stat      p-value
+ Constant    -0.7317       -2.004        0.000    
+ resid mean = -0.731705
+ ----------------------------
+Node 5: Intermediate node
+ A case goes into Node 10 if rad <= 1.5000000
+ rad mean = 5.8640000
+ ----------------------------
+Node 10: Intermediate node
+ A case goes into Node 20 if crim <= 0.41445000E-01
+ crim mean = 0.35415000E-01
+ ----------------------------
+Node 20: Terminal node
+ Coefficients of weighted least squares regression function and weighted means:
+ Regressor    Coefficient  t-stat      p-value
+ Constant     0.2273       0.8059        0.000    
+ resid mean = 0.227331
+ ----------------------------
+Node 21: Terminal node
+ Coefficients of weighted least squares regression function and weighted means:
+ Regressor    Coefficient  t-stat      p-value
+ Constant     -2.249       -1.406        0.000    
+ resid mean = -2.24913
+ ----------------------------
+Node 11: Intermediate node
+ A case goes into Node 22 if rad <= 3.5000000
+ rad mean = 6.1092437
+ ----------------------------
+Node 22: Terminal node
+ Coefficients of weighted least squares regression function and weighted means:
+ Regressor    Coefficient  t-stat      p-value
+ Constant     0.1159       0.6663        0.000    
+ resid mean = 0.115876
+ ----------------------------
+Node 23: Terminal node
+ Coefficients of weighted least squares regression function and weighted means:
+ Regressor    Coefficient  t-stat      p-value
+ Constant    -0.1266       -1.119        0.000    
+ resid mean = -0.126607
+ ----------------------------
+Node 3: Intermediate node
+ A case goes into Node 6 if rm <= 6.6545000
+ rm mean = 6.0728333
+ ----------------------------
+Node 6: Intermediate node
+ A case goes into Node 12 if lstat <= 15.965000
+ lstat mean = 18.274375
+ ----------------------------
+Node 12: Intermediate node
+ A case goes into Node 24 if nox <= 0.82050000
+ nox mean = 0.78875000
+ ----------------------------
+Node 24: Terminal node
+ Coefficients of weighted least squares regression function and weighted means:
+ Regressor    Coefficient  t-stat      p-value
+ Constant    -0.2935E-01  -0.3411        0.000    
+ resid mean = -0.293507E-01
+ ----------------------------
+Node 25: Terminal node
+ Coefficients of weighted least squares regression function and weighted means:
+ Regressor    Coefficient  t-stat      p-value
+ Constant      1.270        1.182        0.000    
+ resid mean = 1.27014
+ ----------------------------
+Node 13: Intermediate node
+ A case goes into Node 26 if age <= 98.900000
+ age mean = 97.362500
+ ----------------------------
+Node 26: Terminal node
+ Coefficients of weighted least squares regression function and weighted means:
+ Regressor    Coefficient  t-stat      p-value
+ Constant    -0.5968       -1.022        0.000    
+ resid mean = -0.596758
+ ----------------------------
+Node 27: Terminal node
+ Coefficients of weighted least squares regression function and weighted means:
+ Regressor    Coefficient  t-stat      p-value
+ Constant     0.1976        1.175        0.000    
+ resid mean = 0.197610
+ ----------------------------
+Node 7: Terminal node
+ Coefficients of weighted least squares regression function and weighted means:
+ Regressor    Coefficient  t-stat      p-value
+ Constant     -2.724       -5.482        0.000    
+ resid mean = -2.72393
+ ----------------------------
+ Number of cases with non-missing D values excluded from model fitting: 203
+ Prediction RMSE for these cases:    1.141    
+ Proportion of variance (R-squared) explained by tree model: 0.1668
+ 
+ Observed and fitted values are stored in data1.fitted
+ R code is stored in data1.R
+ Elapsed time in seconds: 0.28737E-01
