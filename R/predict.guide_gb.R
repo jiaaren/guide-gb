@@ -77,14 +77,6 @@ make_regressor_prediction <- function(fit, x, pred_func, n_trees) {
   rowSums(mult) + fit$basepred
 }
 
-## visualising benefits of early stopping
-# mult <- mult + fit$basepred
-# iteration_pred <- t(apply(mult, 1, cumsum) + fit$basepred)
-# # sense check over predictions
-# res <- apply(iteration_pred, 2, function(pred){ rmse(pred - y) })
-# round(res - fit$err, 2)
-
-
 make_prediction_tree_classifier <- function(x, tree_func) {
   # Create myfunc inside an environment where bip exists
   environment(tree_func) <- environment()
@@ -145,8 +137,8 @@ sense_check_calc <- function(object, train_x, train_y, ...) {
   if (object$type == "regression") {
     mult <- get_iteration_gradients_regressor(object$fit, train_x, pred_func)
     pred_matrix <- t(apply(mult, 1, cumsum)) + object$fit$basepred
-    rmse_vec <- apply(pred_matrix, 2, function(pred){ rmse(pred - train_y) })
-    return(rmse_vec - object$fit$err)
+    mse_vec <- apply(pred_matrix, 2, function(pred){ mse(train_y, pred) })
+    return(mse_vec - object$fit$err)
   }
   if (object$type == "binary_classification") {
     mult <- get_iteration_gradients_classifier(object$fit, train_x)
@@ -163,7 +155,11 @@ sense_check_calc <- function(object, train_x, train_y, ...) {
 #'
 #' @return Predicted values (numeric for regression, class labels for classification).
 #' @export
-predict.guide_gb <- function(object, newdata, n_trees = NULL, ...) {
+# If type="response" then gbm converts back to the same scale as the outcome. Currently the only
+# effect this will have is returning probabilities for bernoulli and expected counts for poisson. For the
+# other distributions "response" and "link" return the same.
+predict.guide_gb <- function(object, newdata, n_trees = NULL, type = c("link", "response"), ...) {
+  type <- match.arg(type)
   pred_func <- get_pred_func(object$guide_pred_type)
   n_trees <- n_trees %||% object$fit$iterations
   # raise error if n_trees exceeds fitted iterations
@@ -182,13 +178,10 @@ predict.guide_gb <- function(object, newdata, n_trees = NULL, ...) {
     return(make_regressor_prediction(object$fit, x = newdata, pred_func = pred_func, n_trees = n_trees, ...))
   }
   if (object$type == "binary_classification") {
-    print("Hi world!")
     predLogOdds <- make_classifier_prediction(object$fit, x = newdata, n_trees = n_trees)
-    # probs <- 1/(1+exp(-predLogOdds))
-    probs <- plogis(predLogOdds)
-    probs
-    # probs <- predict(object$fit, newdata = newdata, type = "response", ...)
-    # preds <- ifelse(probs > 0.5, 1, 0)
-    # return(preds)
+    if (type == "response") {
+      return(plogis(predLogOdds))
+    }
+    return(predLogOdds)
   }
 }

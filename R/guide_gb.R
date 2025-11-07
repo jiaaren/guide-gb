@@ -15,13 +15,23 @@
 # source('/Users/jkhong/Desktop/guide-gb/R/predict.guide_gb.R')
 
 # metrics
-mse <- function(resid) {
-  mean(resid^2)
-}
-rmse <- function(resid) {
-  sqrt(mean(resid^2))
+mse <- function(actual, pred) {
+  mean((actual - pred)^2)
 }
 
+rmse <- function(actual, pred) {
+  sqrt(mse(actual, pred))
+}
+
+loglik <- function(actual, pred) {
+  -2 * mean(actual * log(pred) + (1 - actual) * log(1 - pred))
+}
+
+loglik2 <- function(actual, log_odds) {
+  -2 * mean(actual * log_odds - log(1 + exp(log_odds)))
+}
+
+# utils
 trim_file_at_marker <- function(file, marker = "## end of function") {
   # read file lines
   lines <- readLines(file)
@@ -48,8 +58,8 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
   # initialise predictions with mean of y
   pred_y <- mean(y)
   y_pred <- rep(pred_y, length(y))
-  prev_train_err <- rmse(y - y_pred)
-  print(paste("train rmse:", prev_train_err))
+  prev_train_err <- mse(y, y_pred)
+  print(paste("train mse:", prev_train_err))
 
   # initialise return values
   eta_vec <- c()
@@ -89,10 +99,10 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
       y_pred <- y_pred + eta * fitted$predicted
     }
     eta_vec[it] <- eta
-    # compute training RMSE against true target
-    new_train_err <- rmse(y - y_pred)
+    # compute training MSE against true target
+    new_train_err <- mse(y, y_pred)
     err_vec[it] <- new_train_err
-    print(paste('train rmse after iteration', it, ':', new_train_err)) 
+    print(paste('train mse after iteration', it, ':', new_train_err)) 
     # stopping criterion
     if (abs(new_train_err - prev_train_err) < epsilon) break
     prev_train_err <- new_train_err
@@ -106,14 +116,6 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
     eta = eta_vec,
     err = err_vec
   ))
-}
-
-loglik <- function(actual, pred) {
-  sum(actual * log(pred) + (1 - actual) * log(1 - pred))
-}
-
-loglik2 <- function(actual, log_odds) {
-  sum(actual * log_odds - log(1 + exp(log_odds)))
 }
 
 # Handles binary cases
@@ -169,7 +171,6 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
     fitted <- read.table("data.fitted", header = TRUE)
     # update tree map
     tmp_tree_map <- list()
-    print(sum(as.numeric(fitted$train == "y")))
     for (node in unique(fitted$node)) {
       # NOTE: Highly important to only use training data to compute predLogOdds
       bool_node_train <- fitted$train == "y" & fitted$node == node
