@@ -57,29 +57,23 @@ make_prediction_tree_regressor <- function(x, tree_func) {
   return (data.frame(node, fitvar, pred))
 }
 
-# fit <- model$fit
-# pred_func <- get_pred_func(model$guide_pred_type)
-# results <- lapply(fit$trees, function(f) pred_func(test_x, f)$pred)
-# results <- do.call(cbind, results)
-
-# # cumsum results
-# mult <- sweep(results, 2, fit$eta, `*`)
-# iteration_pred <- t(apply(mult, 1, cumsum) + fit$basepred)
-# # calculate RMSE at each iteration
-# # sense check over predictions
-# res <- apply(iteration_pred, 2, function(pred){ rmse(pred - test_y) })
-# # find lowest iteration RMSE, idx
-# min(res)
-# which.min(res)
-# # round(res - fit$err, 2)
-
-
-
-make_regressor_prediction <- function(fit, x, pred_func) {
-  # explore how to use node and fitvar next time
-  results <- lapply(fit$trees, function(f) pred_func(x, f)$pred)
+# returns a matrix of gradients, rows = observations, cols = iterations
+get_iteration_gradients_regressor <- function(fit, x, pred_func, n_trees = NULL) {
+  # n_trees passed here cannot be a vector, hence max
+  n_trees <- max(n_trees %||% fit$iterations)
+  # TODO: explore how to use node and fitvar next time
+  results <- lapply(fit$trees[1:n_trees], function(f) pred_func(x, f)$pred)
   results <- do.call(cbind, results)
-  mult <- sweep(results, 2, fit$eta, `*`)
+  sweep(results, 2, fit$eta[1:n_trees], `*`)
+}
+
+make_regressor_prediction <- function(fit, x, pred_func, n_trees) {
+  mult <- get_iteration_gradients_regressor(fit, x, pred_func, n_trees)
+  # check if n_trees is a scalar or vector
+  if (length(n_trees) > 1) {
+    iteration_pred <- t(apply(mult, 1, cumsum)) + fit$basepred
+    return(iteration_pred[, n_trees, drop = FALSE])
+  }
   rowSums(mult) + fit$basepred
 }
 
@@ -119,14 +113,14 @@ map_logodds <- function(tree_map, nodes) {
 # returns a matrix of gradients, rows = observations, cols = iterations
 get_iteration_gradients_classifier <- function(fit, x) {
   # classifier references node
-  results = lapply(fit$trees, function(f) make_prediction_tree_a(x, f)$node)
+  results <- lapply(fit$trees, function(f) make_prediction_tree_a(x, f)$node)
   mapped_results <- mapply(map_logodds, fit$tree_maps, results, SIMPLIFY = TRUE)
-  mult = sweep(mapped_results, 2, fit$eta, `*`)
+  mult <- sweep(mapped_results, 2, fit$eta, `*`)
   return(mult)
 }
 
 make_classifier_prediction <- function(fit, x) {
-  mult = get_iteration_gradients_classifier(fit, x)
+  mult <- get_iteration_gradients_classifier(fit, x)
   predLogOdds <- rowSums(mult) + fit$basepred
   pred <- 1/(1+exp(-predLogOdds))
   return(pred)
@@ -142,14 +136,16 @@ get_pred_func <- function(guide_pred_type) {
   }
 }
 
+
 sense_check_calc <- function(object, train_x, train_y, ...) {
   pred_func <- get_pred_func(object$guide_pred_type)
   if (object$type == "regression") {
-    preds <- make_regressor_prediction(object$fit, x = train_x, pred_func=pred_func)
-    return(preds)
+    mult <- get_iteration_gradients_regressor(object$fit, train_x, pred_func)
+    pred_matrix <- t(apply(mult, 1, cumsum)) + object$fit$basepred
+    rmse_vec <- apply(pred_matrix, 2, function(pred){ rmse(pred - train_y) })      return(rmse_vec - object$fit$err)
   }
   if (object$type == "binary_classification") {
-    mult = get_iteration_gradients_classifier(object$fit, train_x)
+    mult <- get_iteration_gradients_classifier(object$fit, train_x)
     loglik_matrix <- t(apply(mult, 1, cumsum)) + object$fit$basepred
     apply(loglik_matrix, 2, function(predLogOdds){ loglik2(actual = train_y, log_odds = predLogOdds) }) - object$fit$err
   }
@@ -163,8 +159,10 @@ sense_check_calc <- function(object, train_x, train_y, ...) {
 #'
 #' @return Predicted values (numeric for regression, class labels for classification).
 #' @export
-predict.guide_gb <- function(object, newdata, ...) {
+predict.guide_gb <- function(object, newdata, n_trees = NULL, ...) {
   pred_func <- get_pred_func(object$guide_pred_type)
+  n_trees <- n_trees %||% object$fit$iterations
+  # handle missingness indicators
   for (col in object$missing_num_vars) {
     missing_col <- paste0(col, ".NA")
     newdata[[missing_col]] <- is.na(newdata[[col]])
@@ -173,7 +171,7 @@ predict.guide_gb <- function(object, newdata, ...) {
   }
 
   if (object$type == "regression") {
-    return(make_regressor_prediction(object$fit, x = newdata, pred_func=pred_func, ...))
+    return(make_regressor_prediction(object$fit, x = newdata, pred_func = pred_func, n_trees = n_trees, ...))
   }
   if (object$type == "binary_classification") {
     return(make_classifier_prediction(object$fit, x = newdata, ...))

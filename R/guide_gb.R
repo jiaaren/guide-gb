@@ -33,11 +33,18 @@ trim_file_at_marker <- function(file, marker = "## end of function") {
 }
 
 # fitting regressor model
-fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilon) {
+fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilon,
+                           bagging, bag_fraction, bag_seed=NULL) {
   # keep track of current path and change path to run_folder
   curr_path <- getwd()
   setwd(run_folder)
-  
+
+  # initialise variables
+  n <- nrow(x)
+  x$resid <- 0
+  if (bagging) x$istrain <- 0
+  if (is.null(bag_seed)) bag_seed <- sample.int(1e6, 1)
+
   # initialise predictions with mean of y
   pred_y <- mean(y)
   y_pred <- rep(pred_y, length(y))
@@ -52,15 +59,22 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
 
   prev_train_err <- rmse(y - y_pred)
   print(paste('train rmse:', prev_train_err))
-  
+
   # iterate gradient boosting
   for (it in 1:iterations) {
     it_id <- paste('it_', it, sep = '')
     # compute residuals
     resid <- y - y_pred
+    # if bagging, create istrain indicator
+    if (bagging) {
+      x$istrain <- 0
+      set.seed(bag_seed + it) # ensure different seed per iteration
+      train_idx <- sample.int(n, size = floor(n * bag_fraction), replace = FALSE)
+      x$istrain[train_idx] <- 1
+    }
+    x$resid <- resid
     # write training data (features + residuals)
-    write.csv(data.frame(x, resid = resid), 
-              file.path(run_folder, 'data.csv'), 
+    write.csv(x, file.path(run_folder, 'data.csv'),
               row.names = FALSE)
     # fit guide tree (external call)
     exec_out <- system(paste(guide_path, '< data.in'), intern = TRUE)
@@ -71,9 +85,9 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
     trees[[it]] <- predicted
     # read fitted from file vs parsed code
     fitted <- read.table('data.fitted', header = TRUE)
-    # fitted <- pred_func(x, predicted) # this would return 'pred' instead of 'predicted'
+    # fitted <- make_prediction_tree_b(x[,c(1:13)], predicted) # this would return 'pred' instead of 'predicted'
     # update predictions
-    y_pred <- y_pred + eta * fitted$predicted
+    y_pred <- y_pred + eta * fitted$pred
     eta_vec[it] <- eta
     # compute training RMSE against true target
     new_train_err <- rmse(y - y_pred)
@@ -176,21 +190,31 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
   ))
 }
 
-process_dsc_file <- function(dsc_path) {
-  # read DSC file lines
-  lines <- readLines(dsc_path)
-  lines <- trimws(lines)
+dsc_clean <- function(dsc_lines) {
+  dsc_lines <- trimws(dsc_lines)
+  dsc_lines[dsc_lines != ""]
+}
+
+dsc_add_weight <- function(dsc_lines, weight_var = "istrain") {
+  # get idx of last variable
+  last_line <- dsc_lines[length(dsc_lines)]
+  last_var_idx <- as.integer(unlist(strsplit(last_line, "\\s+"))[1])
+  dsc_lines <- c(dsc_lines, paste(last_var_idx + 1, weight_var, "w"))
+  dsc_lines
+}
+
+dsc_get_variables <- function(dsc_lines) {
   variables <- list()
-  for (i in seq_along(lines)) {
+  for (i in seq_along(dsc_lines)) {
     # first 3 rows relate to missing value handling and rows to skip
     if (i <= 3) next
     # split by spaces and update list
-    parts <- unlist(strsplit(lines[i], "\\s+"))
+    parts <- unlist(strsplit(dsc_lines[i], "\\s+"))
     var_name <- parts[2]
     var_type <- parts[3]
     variables[[var_name]] <- var_type
   }
-  variables[["missing_indicator"]] <- parts[1]
+  variables[["missing_indicator"]] <- dsc_lines[2]
   variables
 }
 
@@ -213,18 +237,28 @@ type_map <- c(
 )
 
 guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
-                    type = c("regression", "binary_classification"),
-                    complexity=c("constant_exhaustive", "constant_quantiles",
-                                "poly1", "poly2", "stepwise"),
-                    eta=0.1,
-                    max_split_levels=4,
-                    min_node_size=4,
-                    iterations=100,
-                    epsilon=1e-5) {
+                     type = c("regression", "binary_classification"),
+                     complexity = c("constant_exhaustive", "constant_quantiles",
+                                    "poly1", "poly2", "stepwise"),
+                     eta = 0.1,
+                     max_split_levels = 4,
+                     min_node_size = 4,
+                     iterations = 100,
+                     bag_fraction = 1.0,
+                     bag_seed = NULL,
+                     epsilon = 1e-5) {
   type <- match.arg(type)
   complexity <- match.arg(complexity)
   guide_pred_type <- type_map[[complexity]]
-
+  # validate that bag_fraction is more than 0 and less than or equal to 1
+  if (bag_fraction <= 0 || bag_fraction > 1) {
+    stop("bag_fraction must be in the range (0, 1].")
+  }
+  bagging <- ifelse(bag_fraction < 1.0, TRUE, FALSE)
+  # if bagging is FALSE and bag_seed is provided, warn user
+  if (!bagging && !is.null(bag_seed)) {
+    warning("bag_seed is provided but bagging is disabled (bag_fraction = 1.0). The bag_seed will be ignored.")
+  }
   # validate that guide_path exists
   if (!file.exists(guide_path)) {
     stop("guide_path does not exist.")
@@ -257,17 +291,22 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
   if (!file.exists(dsc_file_src)) {
     stop(paste("DSC file does not exist at", dsc_file_src))
   }
-  file.copy(dsc_file_src, file.path(run_folder, "data.DSC"), overwrite = TRUE)
-  dsc_vars <- process_dsc_file(dsc_file_src)
+  dsc_lines <- dsc_clean(readLines(dsc_file_src))
+  if (bagging) dsc_lines <- dsc_add_weight(dsc_lines)
+  # write modified DSC file to run_folder
+  writeLines(dsc_lines, con = file.path(run_folder, "data.DSC"))
+  dsc_vars <- dsc_get_variables(dsc_lines)
 
   # keep track of missing values for subsequent processing for predictions
   missing_num_vars <- count_missing_values(x, dsc_vars)
 
   if (type == "regression") {
-    fit <- fit_regression(x,y,guide_path,run_folder,eta,iterations,epsilon)
+    fit <- fit_regression(x, y, guide_path, run_folder, eta, iterations,
+                          epsilon, bagging, bag_fraction, bag_seed)
   }
   if (type == "binary_classification") {
-    fit <- fit_binary_classifier(x,y,guide_path,run_folder,eta,iterations,epsilon)
+    fit <- fit_binary_classifier(x, y, guide_path, run_folder, eta, iterations,
+                                 epsilon, bagging, bag_fraction, bag_seed)
   }
 
   # Add attributes
