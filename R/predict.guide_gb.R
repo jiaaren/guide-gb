@@ -128,9 +128,9 @@ make_classifier_prediction <- function(fit, x) {
 
 get_pred_func <- function(guide_pred_type) {
   if (guide_pred_type == "a") {
-    return(make_prediction_tree_a)
+    make_prediction_tree_a
   } else if (guide_pred_type == "b") {
-    return(make_prediction_tree_b)
+    make_prediction_tree_b
   } else {
     stop("Unknown guide_pred_type")
   }
@@ -142,7 +142,8 @@ sense_check_calc <- function(object, train_x, train_y, ...) {
   if (object$type == "regression") {
     mult <- get_iteration_gradients_regressor(object$fit, train_x, pred_func)
     pred_matrix <- t(apply(mult, 1, cumsum)) + object$fit$basepred
-    rmse_vec <- apply(pred_matrix, 2, function(pred){ rmse(pred - train_y) })      return(rmse_vec - object$fit$err)
+    rmse_vec <- apply(pred_matrix, 2, function(pred){ rmse(pred - train_y) })
+    return(rmse_vec - object$fit$err)
   }
   if (object$type == "binary_classification") {
     mult <- get_iteration_gradients_classifier(object$fit, train_x)

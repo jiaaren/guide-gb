@@ -34,20 +34,22 @@ trim_file_at_marker <- function(file, marker = "## end of function") {
 
 # fitting regressor model
 fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilon,
-                           bagging, bag_fraction, bag_seed=NULL) {
+                           bagging, bag_fraction, bag_seed=NULL, fit_pred_exact=FALSE, guide_pred_type) {
   # keep track of current path and change path to run_folder
   curr_path <- getwd()
   setwd(run_folder)
 
-  # initialise variables
+  # initialise supplementary df, used for GUIDE input
   n <- nrow(x)
-  x$resid <- 0
-  if (bagging) x$istrain <- 0
+  supp <- data.frame(resid = rep(0, n))
+  if (bagging) supp$istrain <- 0
   if (is.null(bag_seed)) bag_seed <- sample.int(1e6, 1)
 
   # initialise predictions with mean of y
   pred_y <- mean(y)
   y_pred <- rep(pred_y, length(y))
+  prev_train_err <- rmse(y - y_pred)
+  print(paste("train rmse:", prev_train_err))
 
   # initialise return values
   eta_vec <- c()
@@ -55,10 +57,7 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
   trees <- list()
 
   # get pred_func based on root prediction
-  # pred_func <- make_prediction_tree_a
-
-  prev_train_err <- rmse(y - y_pred)
-  print(paste('train rmse:', prev_train_err))
+  pred_func <- get_pred_func(guide_pred_type)
 
   # iterate gradient boosting
   for (it in 1:iterations) {
@@ -67,27 +66,30 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
     resid <- y - y_pred
     # if bagging, create istrain indicator
     if (bagging) {
-      x$istrain <- 0
+      supp$istrain <- 0
       set.seed(bag_seed + it) # ensure different seed per iteration
       train_idx <- sample.int(n, size = floor(n * bag_fraction), replace = FALSE)
-      x$istrain[train_idx] <- 1
+      supp$istrain[train_idx] <- 1
     }
-    x$resid <- resid
+    supp$resid <- resid
     # write training data (features + residuals)
-    write.csv(x, file.path(run_folder, 'data.csv'),
+    write.csv(cbind(x, supp), file.path(run_folder, "data.csv"),
               row.names = FALSE)
     # fit guide tree (external call)
-    exec_out <- system(paste(guide_path, '< data.in'), intern = TRUE)
+    exec_out <- system(paste(guide_path, "< data.in"), intern = TRUE)
     # read fitted predictions (should be on residuals)
-    code <- trim_file_at_marker('data.R')
+    code <- trim_file_at_marker("data.R")
     # code predicted will be parsed
     eval(parse(text = code))
     trees[[it]] <- predicted
-    # read fitted from file vs parsed code
-    fitted <- read.table('data.fitted', header = TRUE)
-    # fitted <- make_prediction_tree_b(x[,c(1:13)], predicted) # this would return 'pred' instead of 'predicted'
-    # update predictions
-    y_pred <- y_pred + eta * fitted$pred
+    # read fitted from file vs parsed code, and update predictions
+    if (fit_pred_exact) {
+      fitted <- pred_func(x, predicted)
+      y_pred <- y_pred + eta * fitted$pred
+    } else {
+      fitted <- read.table("data.fitted", header = TRUE)
+      y_pred <- y_pred + eta * fitted$predicted
+    }
     eta_vec[it] <- eta
     # compute training RMSE against true target
     new_train_err <- rmse(y - y_pred)
@@ -100,11 +102,11 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
   # reset path to current path after fitting
   setwd(curr_path)
   return(list(
-    basepred=pred_y,
-    trees=trees,
-    iterations=it,
-    eta=eta_vec,
-    err=err_vec
+    basepred = pred_y,
+    trees = trees,
+    iterations = it,
+    eta = eta_vec,
+    err = err_vec
   ))
 }
 
@@ -246,7 +248,8 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
                      iterations = 100,
                      bag_fraction = 1.0,
                      bag_seed = NULL,
-                     epsilon = 1e-5) {
+                     epsilon = 1e-5,
+                     fit_pred_exact = FALSE) {
   type <- match.arg(type)
   complexity <- match.arg(complexity)
   guide_pred_type <- type_map[[complexity]]
@@ -300,28 +303,45 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
   # keep track of missing values for subsequent processing for predictions
   missing_num_vars <- count_missing_values(x, dsc_vars)
 
+  # if fit_pred_exact is TRUE, then need to pass in guide_pred_type,
+  ## only relevant for regression as classifier calculates logodds using nodes
   if (type == "regression") {
-    fit <- fit_regression(x, y, guide_path, run_folder, eta, iterations,
-                          epsilon, bagging, bag_fraction, bag_seed)
+    fit <- fit_regression(x = x, y = y,
+                          guide_path = guide_path,
+                          run_folder = run_folder,
+                          eta = eta,
+                          iterations = iterations,
+                          epsilon = epsilon,
+                          bagging = bagging,
+                          bag_fraction = bag_fraction,
+                          bag_seed = bag_seed,
+                          fit_pred_exact = fit_pred_exact,
+                          guide_pred_type = guide_pred_type)
   }
   if (type == "binary_classification") {
-    fit <- fit_binary_classifier(x, y, guide_path, run_folder, eta, iterations,
-                                 epsilon, bagging, bag_fraction, bag_seed)
+    fit <- fit_binary_classifier(x = x, y = y,
+                                 guide_path = guide_path,
+                                 run_folder = run_folder,
+                                 eta = eta,
+                                 iterations = iterations,
+                                 epsilon = epsilon,
+                                 bagging = bagging,
+                                 bag_fraction = bag_fraction,
+                                 bag_seed = bag_seed)
   }
-
   # Add attributes
   structure(
     list(
       fit = fit,
-      guide_path=guide_path,
-      config_path=config_path,
-      in_file=in_file_concat,
-      dsc_vars=dsc_vars,
-      missing_num_vars=missing_num_vars,
-      guide_pred_type=guide_pred_type,
-      eta=eta,
-      iterations=iterations,
-      epsilon=epsilon,
+      guide_path = guide_path,
+      config_path = config_path,
+      in_file = in_file_concat,
+      dsc_vars = dsc_vars,
+      missing_num_vars = missing_num_vars,
+      guide_pred_type = guide_pred_type,
+      eta = eta,
+      iterations = iterations,
+      epsilon = epsilon,
       type = type,
       call = match.call(),             # store the call
       nobs = nrow(x),                  # number of observations
@@ -330,4 +350,3 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
     class = "guide_gb"
   )
 }
-
