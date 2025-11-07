@@ -111,19 +111,22 @@ map_logodds <- function(tree_map, nodes) {
 }
 
 # returns a matrix of gradients, rows = observations, cols = iterations
-get_iteration_gradients_classifier <- function(fit, x) {
+get_iteration_gradients_classifier <- function(fit, x, n_trees = NULL) {
+  # n_trees passed here cannot be a vector, hence max
+  n_trees <- max(n_trees %||% fit$iterations) 
   # classifier references node
-  results <- lapply(fit$trees, function(f) make_prediction_tree_a(x, f)$node)
+  results <- lapply(fit$trees[1:n_trees], function(f) make_prediction_tree_a(x, f)$node)
   mapped_results <- mapply(map_logodds, fit$tree_maps, results, SIMPLIFY = TRUE)
-  mult <- sweep(mapped_results, 2, fit$eta, `*`)
-  return(mult)
+  sweep(mapped_results, 2, fit$eta[1:n_trees], `*`)
 }
 
-make_classifier_prediction <- function(fit, x) {
-  mult <- get_iteration_gradients_classifier(fit, x)
-  predLogOdds <- rowSums(mult) + fit$basepred
-  pred <- 1/(1+exp(-predLogOdds))
-  return(pred)
+make_classifier_prediction <- function(fit, x, n_trees) {
+  mult <- get_iteration_gradients_classifier(fit, x, n_trees)
+  if (length(n_trees) > 1) {
+    iteration_pred_logodds <- t(apply(mult, 1, cumsum)) + fit$basepred
+    return(iteration_pred_logodds[, n_trees, drop = FALSE])
+  }
+  rowSums(mult) + fit$basepred
 }
 
 get_pred_func <- function(guide_pred_type) {
@@ -179,7 +182,11 @@ predict.guide_gb <- function(object, newdata, n_trees = NULL, ...) {
     return(make_regressor_prediction(object$fit, x = newdata, pred_func = pred_func, n_trees = n_trees, ...))
   }
   if (object$type == "binary_classification") {
-    return(make_classifier_prediction(object$fit, x = newdata, ...))
+    print("Hi world!")
+    predLogOdds <- make_classifier_prediction(object$fit, x = newdata, n_trees = n_trees)
+    # probs <- 1/(1+exp(-predLogOdds))
+    probs <- plogis(predLogOdds)
+    probs
     # probs <- predict(object$fit, newdata = newdata, type = "response", ...)
     # preds <- ifelse(probs > 0.5, 1, 0)
     # return(preds)

@@ -61,9 +61,8 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
 
   # iterate gradient boosting
   for (it in 1:iterations) {
-    it_id <- paste('it_', it, sep = '')
     # compute residuals
-    resid <- y - y_pred
+    supp$resid <- y - y_pred
     # if bagging, create istrain indicator
     if (bagging) {
       supp$istrain <- 0
@@ -71,22 +70,21 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
       train_idx <- sample.int(n, size = floor(n * bag_fraction), replace = FALSE)
       supp$istrain[train_idx] <- 1
     }
-    supp$resid <- resid
     # write training data (features + residuals)
     write.csv(cbind(x, supp), file.path(run_folder, "data.csv"),
               row.names = FALSE)
     # fit guide tree (external call)
     exec_out <- system(paste(guide_path, "< data.in"), intern = TRUE)
-    # read fitted predictions (should be on residuals)
     code <- trim_file_at_marker("data.R")
     # code predicted will be parsed
     eval(parse(text = code))
     trees[[it]] <- predicted
-    # read fitted from file vs parsed code, and update predictions
     if (fit_pred_exact) {
+      # read fitted predictions (should be on residuals)
       fitted <- pred_func(x, predicted)
       y_pred <- y_pred + eta * fitted$pred
     } else {
+      # read fitted from file vs parsed code, and update predictions
       fitted <- read.table("data.fitted", header = TRUE)
       y_pred <- y_pred + eta * fitted$predicted
     }
@@ -120,62 +118,76 @@ loglik2 <- function(actual, log_odds) {
 
 # Handles binary cases
 # accepts when y is either 1 or 0, where positive class is assumed to be 1
-fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations, epsilon) {
+fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations, epsilon,
+                                  bagging, bag_fraction, bag_seed=NULL) {
   # keep track of current path and change path to run_folder
   curr_path <- getwd()
   setwd(run_folder)
-  
+
+  # initialise supplementary df, used for GUIDE input
+  n <- nrow(x)
+  supp <- data.frame(resid = rep(0, n))
+  if (bagging) supp$istrain <- 0
+  if (is.null(bag_seed)) bag_seed <- sample.int(1e6, 1)
+
   # initialise predictions with log odds
   countPos <- sum(y)
   countNeg <- length(y) - countPos
   init.log.odds <- log(countPos / countNeg)
   log.odds <- rep(init.log.odds, length(y))
+  prev_train_err <- loglik2(actual = y, log_odds = log.odds)
+  print(paste("train log likelihood:", prev_train_err))
 
   # initialise return values
   eta_vec <- c()
   err_vec <- c()
   trees <- list()
   tree_maps <- list()
-
-  prev_train_err <- loglik2(actual = y, log_odds = log.odds)
-  print(paste('train log likelihood:', prev_train_err))
   
   # iterate gradient boosting
   for (it in 1:iterations) {
-    it_id <- paste('it_', it, sep = '')
     # compute residuals
     y_pred <- 1/(1+exp(-log.odds))
-    resid <- y - y_pred
+    supp$resid <- y - y_pred
+    # if bagging, create istrain indicator
+    if (bagging) {
+      supp$istrain <- 0
+      set.seed(bag_seed + it) # ensure different seed per iteration
+      train_idx <- sample.int(n, size = floor(n * bag_fraction), replace = FALSE)
+      supp$istrain[train_idx] <- 1
+    }
     # write training data (features + residuals)
-    write.csv(data.frame(x, resid = resid), 
-              file.path(run_folder, 'data.csv'), 
+    write.csv(cbind(x, supp), file.path(run_folder, "data.csv"),
               row.names = FALSE)
     # fit guide tree (external call)
-    exec_out <- system(paste(guide_path, '< data.in'), intern = TRUE)
-    # read fitted predictions (should be on residuals)
-    fitted <- read.table('data.fitted', header = TRUE)
-    code <- trim_file_at_marker('data.R')
+    exec_out <- system(paste(guide_path, "< data.in"), intern = TRUE)
+    code <- trim_file_at_marker("data.R")
+    # code predicted will be parsed
     eval(parse(text = code))
     trees[[it]] <- predicted
-    # calculate gradients using residuals
+    # read fitted predictions (should be on residuals)
+    fitted <- read.table("data.fitted", header = TRUE)
+    # update tree map
     tmp_tree_map <- list()
+    print(sum(as.numeric(fitted$train == "y")))
     for (node in unique(fitted$node)) {
-      bool_node_train <- fitted$train == 'y' & fitted$node == node
+      # NOTE: Highly important to only use training data to compute predLogOdds
+      bool_node_train <- fitted$train == "y" & fitted$node == node
       # resid would have the same values as fitted_observed
-      numerator <- sum(resid[bool_node_train])
+      numerator <- sum(supp$resid[bool_node_train])
       denominator <- sum(y_pred[bool_node_train] * (1 - y_pred[bool_node_train]))
       predLogOdds <- ifelse(denominator == 0, 0, numerator / denominator)
-      fitted[fitted$node == node, 'predLogOdds'] <- predLogOdds
+      fitted[fitted$node == node, "predLogOdds"] <- predLogOdds
       tmp_tree_map[[as.character(node)]] <- predLogOdds
     }
     tree_maps[[it]] <- tmp_tree_map
     # update predictions
     log.odds <- log.odds + fitted$predLogOdds * eta
     eta_vec[it] <- eta
-    # compute new train error if pred against true target
+    # compute new train error of pred against true target
     new_train_err <- loglik2(actual = y, log_odds = log.odds)
     err_vec[it] <- new_train_err
-    print(paste('train loglik after iteration', it, ':', new_train_err)) 
+    print(paste("train loglik after iteration", it, ":", new_train_err)) 
     # stopping criterion
     if (abs(new_train_err - prev_train_err) < epsilon) break
     prev_train_err <- new_train_err
@@ -183,12 +195,12 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
   # reset path to current path after fitting
   setwd(curr_path)
   return(list(
-    basepred=init.log.odds,
-    trees=trees,
-    tree_maps=tree_maps,
-    iterations=it,
-    eta=eta_vec,
-    err=err_vec
+    basepred = init.log.odds,
+    trees = trees,
+    tree_maps = tree_maps,
+    iterations = it,
+    eta = eta_vec,
+    err = err_vec
   ))
 }
 
@@ -261,6 +273,12 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
   # if bagging is FALSE and bag_seed is provided, warn user
   if (!bagging && !is.null(bag_seed)) {
     warning("bag_seed is provided but bagging is disabled (bag_fraction = 1.0). The bag_seed will be ignored.")
+  }
+  # if type is classification, validate that y contains only 0 and 1
+  if (type == "binary_classification") {
+    if (!all(y %in% c(0, 1))) {
+      stop("For binary_classification, y must contain only 0 and 1 values.")
+    }
   }
   # validate that guide_path exists
   if (!file.exists(guide_path)) {
