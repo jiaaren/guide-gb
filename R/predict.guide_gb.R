@@ -169,9 +169,7 @@ predict.guide_gb <- function(object, newdata, n_trees = NULL, type = c("link", "
   # handle missingness indicators
   for (col in object$missing_num_vars) {
     missing_col <- paste0(col, ".NA")
-    newdata[[missing_col]] <- is.na(newdata[[col]])
-    # not sure which one is it, to inspect R generated code
-    # newdata[[missing_col]] <- ifelse(is.na(newdata[[col]]), 1, 0)
+    newdata[[missing_col]] <- ifelse(is.na(newdata[[col]]), 1, 0)
   }
 
   if (object$type == "regression") {

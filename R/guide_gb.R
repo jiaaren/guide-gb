@@ -44,9 +44,9 @@ trim_file_at_marker <- function(file, marker = "## end of function") {
 
 # fitting regressor model
 fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilon,
-                           bagging, bag_fraction, bag_seed=NULL, val_x = NULL, val_y = NULL,
+                           bagging, bag_fraction, complexity, bag_seed=NULL, val_x = NULL, val_y = NULL,
                            early_stop_rounds = NULL, has_early_stop = FALSE, has_watchlist = FALSE,
-                           fit_pred_exact = FALSE, guide_pred_type) {
+                           fit_pred_exact = FALSE, guide_pred_type, missing_num_vars) {
   # keep track of current path and change path to run_folder
   row.names(x) <- NULL # reset row names
   curr_path <- getwd()
@@ -54,6 +54,7 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
 
   # initialise supplementary df, used for GUIDE input
   n <- nrow(x)
+  n_cols <- ncol(x)
   supp <- data.frame(resid = rep(0, n))
   if (is.null(bag_seed)) bag_seed <- sample.int(1e6, 1)
 
@@ -63,13 +64,29 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
   prev_train_err <- mse(y, y_pred)
   print(paste("train mse:", prev_train_err))
 
-  # initialise return values
-  eta_vec <- c()
-  err_vec <- c()
-  trees <- list()
+  # pre-allocate return values
+  eta_vec <- numeric(iterations)
+  err_vec <- numeric(iterations)
+  trees <- vector("list", iterations)
 
   # get pred_func based on root prediction
   pred_func <- get_pred_func(guide_pred_type)
+  # add numerical columns with missingness indicators
+  if (complexity == "stepwise" && fit_pred_exact) {
+    for (col in missing_num_vars)
+      x[[paste0(col, ".NA")]] <- ifelse(is.na(x[[col]]), 1, 0)
+  }
+
+  # pre-set bagging indices if bagging is enabled
+  if (bagging) {
+    set.seed(bag_seed)
+    bag_indices <- lapply(1:iterations, function(it) {
+      sample.int(n, size = floor(n * bag_fraction), replace = FALSE)
+    })
+  }
+
+  # cache column subset for x
+  x_subset <- x[, 1:n_cols]
 
   # iterate gradient boosting
   for (it in 1:iterations) {
@@ -77,11 +94,10 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
     supp$resid <- y - y_pred
     # if bagging, create istrain indicator
     if (bagging) {
-      set.seed(bag_seed + it) # ensure different seed per iteration
-      bag_train_idx <- sample.int(n, size = floor(n * bag_fraction), replace = FALSE)
-      write.csv(cbind(x, supp)[bag_train_idx, ], file.path(run_folder, "data.csv"), row.names = FALSE)
+      bag_train_idx <- bag_indices[[it]]
+      write.csv(cbind(x_subset, supp)[bag_train_idx, ], file.path(run_folder, "data.csv"), row.names = FALSE)
     } else {
-      write.csv(cbind(x, supp), file.path(run_folder, "data.csv"), row.names = FALSE)
+      write.csv(cbind(x_subset, supp), file.path(run_folder, "data.csv"), row.names = FALSE)
     }
     # fit guide tree (external call)
     exec_out <- system(paste(guide_path, "< data.in"), intern = TRUE)
@@ -107,6 +123,12 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
     if (abs(new_train_err - prev_train_err) < epsilon) break
     prev_train_err <- new_train_err
   }
+  # trim trees, eta_vec, err_vec to actual iterations
+  if (it < iterations) {
+    trees <- trees[1:it]
+    eta_vec <- eta_vec[1:it]
+    err_vec <- err_vec[1:it]
+  }
   # reset path to current path after fitting
   setwd(curr_path)
   return(list(
@@ -121,9 +143,9 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
 # Handles binary cases
 # accepts when y is either 1 or 0, where positive class is assumed to be 1
 fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations, epsilon,
-                                  bagging, bag_fraction, bag_seed=NULL, fit_pred_exact = FALSE,
-                                  val_x = NULL, val_y = NULL, early_stop_rounds = NULL,
-                                  has_early_stop = FALSE, has_watchlist = FALSE) {
+                                  bagging, bag_fraction, bag_seed=NULL, val_x = NULL, val_y = NULL,
+                                  early_stop_rounds = NULL, has_early_stop = FALSE, has_watchlist = FALSE,
+                                  fit_pred_exact = FALSE) {
   # keep track of current path and change path to run_folder
   row.names(x) <- NULL # reset row names
   curr_path <- getwd()
@@ -143,11 +165,19 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
   print(paste("train log likelihood:", prev_train_err))
 
   # initialise return values
-  eta_vec <- c()
-  err_vec <- c()
-  trees <- list()
-  tree_maps <- list()
-  
+  eta_vec <- numeric(iterations)
+  err_vec <- numeric(iterations)
+  trees <- vector("list", iterations)
+  tree_maps <- vector("list", iterations)
+
+  # pre-set bagging indices if bagging is enabled
+  if (bagging) {
+    set.seed(bag_seed)
+    bag_indices <- lapply(1:iterations, function(it) {
+      sample.int(n, size = floor(n * bag_fraction), replace = FALSE)
+    })
+  }
+
   # iterate gradient boosting
   for (it in 1:iterations) {
     # compute residuals
@@ -198,6 +228,13 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
     # stopping criterion
     if (abs(new_train_err - prev_train_err) < epsilon) break
     prev_train_err <- new_train_err
+  }
+  # trim trees, eta_vec, err_vec, tree_maps to actual iterations
+  if (it < iterations) {
+    trees <- trees[1:it]
+    eta_vec <- eta_vec[1:it]
+    err_vec <- err_vec[1:it]
+    tree_maps <- tree_maps[1:it]
   }
   # reset path to current path after fitting
   setwd(curr_path)
@@ -375,6 +412,7 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
   dsc_vars <- dsc_get_variables(dsc_lines)
 
   # keep track of missing values for subsequent processing for predictions
+  ## only relevant for stepwise complexities
   missing_num_vars <- count_missing_values(x, dsc_vars)
 
   # if fit_pred_exact is TRUE, then need to pass in guide_pred_type,
@@ -388,6 +426,7 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
                           epsilon = epsilon,
                           bagging = bagging,
                           bag_fraction = bag_fraction,
+                          complexity = complexity,
                           bag_seed = bag_seed,
                           val_x = val_x,
                           val_y = val_y,
@@ -395,7 +434,8 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
                           has_early_stop = has_early_stop,
                           has_watchlist = has_watchlist,
                           fit_pred_exact = fit_pred_exact,
-                          guide_pred_type = guide_pred_type)
+                          guide_pred_type = guide_pred_type,
+                          missing_num_vars = missing_num_vars)
   }
   if (type == "binary_classification") {
     fit <- fit_binary_classifier(x = x, y = y,
