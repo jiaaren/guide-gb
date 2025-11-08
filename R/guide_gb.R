@@ -43,10 +43,10 @@ trim_file_at_marker <- function(file, marker = "## end of function") {
 }
 
 # fitting regressor model
-fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilon,
+fit_regression <- function(x, y, guide_path, run_folder, eta, iterations,
                            bagging, bag_fraction, complexity, bag_seed=NULL, val_x = NULL, val_y = NULL,
                            early_stop_rounds = NULL, has_early_stop = FALSE, has_watchlist = FALSE,
-                           fit_pred_exact = FALSE, guide_pred_type, missing_num_vars) {
+                           fit_pred_exact = TRUE, guide_pred_type, missing_num_vars) {
   # keep track of current path and change path to run_folder
   row.names(x) <- NULL # reset row names
   curr_path <- getwd()
@@ -73,10 +73,17 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
   pred_func <- get_pred_func(guide_pred_type)
   # add numerical columns with missingness indicators
   if (complexity == "stepwise" && fit_pred_exact) {
-    for (col in missing_num_vars)
+    for (col in missing_num_vars) {
       x[[paste0(col, ".NA")]] <- ifelse(is.na(x[[col]]), 1, 0)
+      if (has_watchlist)
+        val_x[[paste0(col, ".NA")]] <- ifelse(is.na(val_x[[col]]), 1, 0)
+    }
   }
-
+  # initialise with default predictions for validation set
+  if (has_watchlist) {
+    y_pred_val <- rep(pred_y, nrow(val_x))
+    err_val_vec <- numeric(iterations)
+  }
   # pre-set bagging indices if bagging is enabled
   if (bagging) {
     set.seed(bag_seed)
@@ -114,38 +121,58 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations, epsilo
       fitted <- read.table("data.fitted", header = TRUE)
       y_pred <- y_pred + eta * fitted$predicted
     }
-    eta_vec[it] <- eta
     # compute training MSE against true target
+    eta_vec[it] <- eta
     new_train_err <- mse(y, y_pred)
     err_vec[it] <- new_train_err
-    print(paste('train mse after iteration', it, ':', new_train_err)) 
-    # stopping criterion
-    if (abs(new_train_err - prev_train_err) < epsilon) break
-    prev_train_err <- new_train_err
+    # compute validation error if watchlist is provided
+    if (has_watchlist) {
+      # compute validation error
+      val_fitted <- pred_func(val_x, predicted)
+      y_pred_val <- y_pred_val + eta * val_fitted$pred
+      new_val_err <- mse(val_y, y_pred_val)
+      err_val_vec[it] <- new_val_err
+      print(paste("train mse after iteration", it, ":", new_train_err,
+                  "; val mse:", new_val_err))
+    } else {
+      print(paste("train mse after iteration", it, ":", new_train_err))
+    }
+    # early stopping check
+    if (has_early_stop) {
+      if (it == 1 || new_val_err < best_val_err) {
+        best_val_err <- new_val_err
+        best_iter <- it
+        no_improve_count <- 0
+      } else
+        no_improve_count <- no_improve_count + 1
+      if (no_improve_count >= early_stop_rounds) break
+    }
   }
   # trim trees, eta_vec, err_vec to actual iterations
-  if (it < iterations) {
-    trees <- trees[1:it]
-    eta_vec <- eta_vec[1:it]
-    err_vec <- err_vec[1:it]
+  if (has_early_stop && it < iterations) {
+    trees <- trees[1:best_iter]
+    eta_vec <- eta_vec[1:best_iter]
+    err_vec <- err_vec[1:best_iter]
+    err_val_vec <- err_val_vec[1:best_iter]
   }
   # reset path to current path after fitting
   setwd(curr_path)
   return(list(
     basepred = pred_y,
     trees = trees,
-    iterations = it,
+    iterations = if (has_early_stop) best_iter else it,
     eta = eta_vec,
-    err = err_vec
+    err = err_vec,
+    err_val = if (has_watchlist) err_val_vec else NULL
   ))
 }
 
 # Handles binary cases
 # accepts when y is either 1 or 0, where positive class is assumed to be 1
-fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations, epsilon,
+fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
                                   bagging, bag_fraction, bag_seed=NULL, val_x = NULL, val_y = NULL,
                                   early_stop_rounds = NULL, has_early_stop = FALSE, has_watchlist = FALSE,
-                                  fit_pred_exact = FALSE) {
+                                  fit_pred_exact = TRUE) {
   # keep track of current path and change path to run_folder
   row.names(x) <- NULL # reset row names
   curr_path <- getwd()
@@ -170,6 +197,11 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
   trees <- vector("list", iterations)
   tree_maps <- vector("list", iterations)
 
+  # initialise with default predictions for validation set
+  if (has_watchlist) {
+    log.odds_val <- rep(init.log.odds, nrow(val_x))
+    err_val_vec <- numeric(iterations)
+  }
   # pre-set bagging indices if bagging is enabled
   if (bagging) {
     set.seed(bag_seed)
@@ -221,20 +253,39 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
     # update predictions
     log.odds <- log.odds + fitted$predLogOdds * eta
     eta_vec[it] <- eta
-    # compute new train error of pred against true target
     new_train_err <- loglik2(actual = y, log_odds = log.odds)
     err_vec[it] <- new_train_err
-    print(paste("train loglik after iteration", it, ":", new_train_err)) 
-    # stopping criterion
-    if (abs(new_train_err - prev_train_err) < epsilon) break
-    prev_train_err <- new_train_err
+    # compute validation error if watchlist is provided
+    if (has_watchlist) {
+      # compute validation error
+      val_fitted <- make_prediction_tree_a(val_x, predicted)
+      val_fitted$predLogOdds <- sapply(val_fitted$node, function(n) tmp_tree_map[[as.character(n)]])
+      log.odds_val <- log.odds_val + val_fitted$predLogOdds * eta
+      new_val_err <- loglik2(actual = val_y, log_odds = log.odds_val)
+      err_val_vec[it] <- new_val_err
+      print(paste("train mse after iteration", it, ":", new_train_err,
+                  "; val mse:", new_val_err))
+    } else {
+      print(paste("train mse after iteration", it, ":", new_train_err))
+    }
+    # early stopping check
+    if (has_early_stop) {
+      if (it == 1 || new_val_err < best_val_err) {
+        best_val_err <- new_val_err
+        best_iter <- it
+        no_improve_count <- 0
+      } else
+        no_improve_count <- no_improve_count + 1
+      if (no_improve_count >= early_stop_rounds) break
+    }
   }
   # trim trees, eta_vec, err_vec, tree_maps to actual iterations
-  if (it < iterations) {
-    trees <- trees[1:it]
-    eta_vec <- eta_vec[1:it]
-    err_vec <- err_vec[1:it]
-    tree_maps <- tree_maps[1:it]
+  if (has_early_stop && it < iterations) {
+    trees <- trees[1:best_iter]
+    eta_vec <- eta_vec[1:best_iter]
+    err_vec <- err_vec[1:best_iter]
+    err_val_vec <- err_val_vec[1:best_iter]
+    tree_maps <- tree_maps[1:best_iter]
   }
   # reset path to current path after fitting
   setwd(curr_path)
@@ -242,9 +293,10 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
     basepred = init.log.odds,
     trees = trees,
     tree_maps = tree_maps,
-    iterations = it,
+    iterations = if (has_early_stop) best_iter else it,
     eta = eta_vec,
-    err = err_vec
+    err = err_vec,
+    err_val = if (has_watchlist) err_val_vec else NULL
   ))
 }
 
@@ -304,10 +356,9 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
                      iterations = 100,
                      bag_fraction = 1.0,
                      bag_seed = NULL,
-                     epsilon = 1e-5,
                      val_x = NULL, val_y = NULL,
                      early_stop_rounds = NULL,
-                     fit_pred_exact = FALSE) {
+                     fit_pred_exact = TRUE) {
   type <- match.arg(type)
   complexity <- match.arg(complexity)
   # this is only required if fit_pred_exact is TRUE
@@ -423,19 +474,18 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
                           run_folder = run_folder,
                           eta = eta,
                           iterations = iterations,
-                          epsilon = epsilon,
                           bagging = bagging,
                           bag_fraction = bag_fraction,
-                          complexity = complexity,
+                          complexity = complexity, # only for regression
                           bag_seed = bag_seed,
-                          val_x = val_x,
-                          val_y = val_y,
+                          val_x = val_x, val_y = val_y,
                           early_stop_rounds = early_stop_rounds,
                           has_early_stop = has_early_stop,
                           has_watchlist = has_watchlist,
                           fit_pred_exact = fit_pred_exact,
-                          guide_pred_type = guide_pred_type,
-                          missing_num_vars = missing_num_vars)
+                          guide_pred_type = guide_pred_type, # only for regression
+                          missing_num_vars = missing_num_vars # only for regression
+      )
   }
   if (type == "binary_classification") {
     fit <- fit_binary_classifier(x = x, y = y,
@@ -443,15 +493,14 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
                                  run_folder = run_folder,
                                  eta = eta,
                                  iterations = iterations,
-                                 epsilon = epsilon,
                                  bagging = bagging,
                                  bag_fraction = bag_fraction,
                                  bag_seed = bag_seed,
-                                 val_x = val_x,
-                                 val_y = val_y,
+                                 val_x = val_x, val_y = val_y,
                                  early_stop_rounds = early_stop_rounds,
                                  has_early_stop = has_early_stop,
-                                 has_watchlist = has_watchlist)
+                                 has_watchlist = has_watchlist,
+                                 fit_pred_exact = fit_pred_exact)
   }
   # Add attributes
   structure(
@@ -465,7 +514,6 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
       guide_pred_type = guide_pred_type,
       eta = eta,
       iterations = iterations,
-      epsilon = epsilon,
       type = type,
       call = match.call(),             # store the call
       nobs = nrow(x),                  # number of observations
