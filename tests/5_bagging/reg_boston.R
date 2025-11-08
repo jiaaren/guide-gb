@@ -36,10 +36,9 @@ model <- guide_gb(train, trainy, guide_path=guide_path, config_path=config_path,
 end <- Sys.time()
 end - start
 pred <- predict(model, test)
-resid <- testy - pred
-rmse(resid)
+rmse(testy, pred)
 # x11()
-plot(testy, resid); abline(h=0, lty=2)
+plot(testy, testy - pred); abline(h=0, lty=2)
 
 # sense_check_calc
 res <- sense_check_calc(model, train, trainy)
@@ -49,8 +48,8 @@ round(res, 6)
 # output graph of fitted vs test rmse to determine if early stopping is beneficial
 preds_matrix <- predict(model, newdata = train, n_trees = 1:model$fit$iterations)
 preds_matrix_test <- predict(model, newdata = test, n_trees = 1:model$fit$iterations)
-rmse_train <- apply(preds_matrix, 2, function(pred){ rmse(pred - trainy) })
-rmse_test <- apply(preds_matrix_test, 2, function(pred){ rmse(pred - testy) })
+rmse_train <- apply(preds_matrix, 2, function(pred){ rmse(trainy, pred) })
+rmse_test <- apply(preds_matrix_test, 2, function(pred){ rmse(testy, pred) })
 plot(1:model$fit$iterations, rmse_train, type='l', col='blue', ylim=range(c(rmse_train, rmse_test)), ylab='RMSE', xlab='Number of Trees', main='Train vs Test RMSE')
 lines(1:model$fit$iterations, rmse_test, col='red')
 legend("topright", legend=c("Train RMSE", "Test RMSE"), col=c("blue", "red"), lty=1)
@@ -58,7 +57,7 @@ legend("topright", legend=c("Train RMSE", "Test RMSE"), col=c("blue", "red"), lt
 plot(1:model$fit$iterations, rmse_test, col='red', type='l', ylim=c(median(rmse_test) - 0.1, median(rmse_test) + 0.1),
      ylab='Test RMSE', xlab='Number of Trees', main='Test RMSE with Early Stopping')
 
-best_rmse_idx <- which.min(rmse_test)
+(best_rmse_idx <- which.min(rmse_test))
 rmse_train[best_rmse_idx]
 rmse_test[best_rmse_idx]
 

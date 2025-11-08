@@ -46,7 +46,7 @@ trim_file_at_marker <- function(file, marker = "## end of function") {
 fit_regression <- function(x, y, guide_path, run_folder, eta, iterations,
                            bagging, bag_fraction, complexity, bag_seed=NULL, val_x = NULL, val_y = NULL,
                            early_stop_rounds = NULL, has_early_stop = FALSE, has_watchlist = FALSE,
-                           fit_pred_exact = TRUE, guide_pred_type, missing_num_vars) {
+                           fit_pred_exact = FALSE, guide_pred_type, missing_num_vars) {
   # keep track of current path and change path to run_folder
   row.names(x) <- NULL # reset row names
   curr_path <- getwd()
@@ -172,7 +172,7 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations,
 fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
                                   bagging, bag_fraction, bag_seed=NULL, val_x = NULL, val_y = NULL,
                                   early_stop_rounds = NULL, has_early_stop = FALSE, has_watchlist = FALSE,
-                                  fit_pred_exact = TRUE) {
+                                  fit_pred_exact = FALSE) {
   # keep track of current path and change path to run_folder
   row.names(x) <- NULL # reset row names
   curr_path <- getwd()
@@ -213,7 +213,7 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
   # iterate gradient boosting
   for (it in 1:iterations) {
     # compute residuals
-    y_pred <- 1/(1+exp(-log.odds))
+    y_pred <- 1 / (1 + exp(-log.odds))
     supp$resid <- y - y_pred
     # if bagging, create istrain indicator
     if (bagging) {
@@ -230,12 +230,13 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
     eval(parse(text = code))
     trees[[it]] <- predicted
     # read fitted predictions (should be on residuals)
-    if (fit_pred_exact) fitted <- read.table("data.fitted", header = TRUE)
-    else {
+    if (fit_pred_exact) {
       fitted <- make_prediction_tree_a(x, predicted)
       fitted$train <- "n"
       if (!bagging) fitted$train <- "y"
-      else fitted$train[bag_train_idx] <- "y"
+      else fitted[bag_train_idx, "train"] <- "y"
+    } else {
+      fitted <- read.table("data.fitted", header = TRUE)
     }
     # update tree map
     tmp_tree_map <- list()
@@ -263,10 +264,10 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
       log.odds_val <- log.odds_val + val_fitted$predLogOdds * eta
       new_val_err <- loglik2(actual = val_y, log_odds = log.odds_val)
       err_val_vec[it] <- new_val_err
-      print(paste("train mse after iteration", it, ":", new_train_err,
-                  "; val mse:", new_val_err))
+      print(paste("train loglik after iteration", it, ":", new_train_err,
+                  "; val loglik:", new_val_err))
     } else {
-      print(paste("train mse after iteration", it, ":", new_train_err))
+      print(paste("train loglik after iteration", it, ":", new_train_err))
     }
     # early stopping check
     if (has_early_stop) {
@@ -423,7 +424,10 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
       warning("early_stop_rounds is >= iterations.")
     }
   }
-
+  # raise error that fit_pred_exact = FALSE is only when bagging is FALSE
+  if (!fit_pred_exact && bagging) {
+    stop("fit_pred_exact = FALSE is only supported when bagging is FALSE (bag_fraction = 1.0).")
+  }
   # validate that guide_path exists
   if (!file.exists(guide_path)) {
     stop("guide_path does not exist.")
