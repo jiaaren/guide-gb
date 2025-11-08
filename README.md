@@ -5,8 +5,22 @@ Gradient Boosting with GUIDE
 - Current version of GUIDE (Version 45.1) used for implementation is macOS Sequoia 15.4.1 with Apple Arm processors (compiled with NAG Fortran 7.2).
 - Credited to Wei Yin Loh (https://pages.stat.wisc.edu/~loh/guide.html)
 
+# Code Organization
+The R/ folder has been refactored for better organization. See [REFACTORING.md](REFACTORING.md) for details.
+
+**Main modules:**
+- `guide_gb.R` - Main API and parameter validation
+- `fit.R` - Model fitting algorithms (regression and classification)
+- `predict.guide_gb.R` - Prediction interface
+- `predict_helpers.R` - Prediction helper functions
+- `metrics.R` - Error metrics (MSE, RMSE, log-likelihood)
+- `utils.R` - General utilities
+- `dsc_utils.R` - DSC file operations (includes `create_dsc()`)
+- `print.guide_gb.R` - Print method
+- `summary.guide_gb.R` - Summary method
+
 # Utility functions available
-1. `create_dsc.R` - automatically reads a dataframe and converts it into a DSC, to specify the output path using the `output` parameter, if empty, DSC is printed in stdout.
+1. `create_dsc()` - automatically reads a dataframe and converts it into a DSC, to specify the output path using the `output` parameter, if empty, DSC is printed in stdout.
 
 # Instructions
 1. Current version works with Version 45.1 of GUIDE
