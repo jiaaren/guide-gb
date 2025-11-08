@@ -1,3 +1,5 @@
+`%||%` <- function(a, b) if (!is.null(a)) a else b
+
 trim_file_at_marker <- function(file, marker = "## end of function") {
   # read file lines
   lines <- readLines(file)

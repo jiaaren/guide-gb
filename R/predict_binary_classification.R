@@ -5,7 +5,7 @@ map_logodds <- function(tree_map, nodes) {
 # returns a matrix of gradients, rows = observations, cols = iterations
 get_iteration_gradients_classifier <- function(fit, x, n_trees = NULL) {
   # n_trees passed here cannot be a vector, hence max
-  n_trees <- max(n_trees %||% fit$iterations) 
+  n_trees <- max(n_trees %||% fit$iterations)
   # classifier references node
   results <- lapply(fit$trees[1:n_trees], function(f) make_prediction_tree_a(x, f)$node)
   mapped_results <- mapply(map_logodds, fit$tree_maps, results, SIMPLIFY = TRUE)
