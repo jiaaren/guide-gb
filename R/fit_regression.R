@@ -109,7 +109,7 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations,
     }
   }
   # trim trees, eta_vec, err_vec to actual iterations
-  if (has_early_stop && it < iterations) {
+  if (has_early_stop && best_iter < it) {
     trees <- trees[1:best_iter]
     eta_vec <- eta_vec[1:best_iter]
     err_vec <- err_vec[1:best_iter]
