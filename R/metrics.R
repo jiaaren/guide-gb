@@ -35,6 +35,10 @@ calc_classification_metrics <- function(true, pred, threshold = 0.5) {
 
   # return metrics
   c(
+    TP = TP,
+    TN = TN,
+    FP = FP,
+    FN = FN,
     accuracy = accuracy,
     precision = precision,
     recall = recall,

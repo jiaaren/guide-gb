@@ -8,7 +8,7 @@ get_iteration_gradients_classifier <- function(fit, x, n_trees = NULL) {
   n_trees <- max(n_trees %||% fit$iterations)
   # classifier references node
   results <- lapply(fit$trees[1:n_trees], function(f) make_prediction_tree_a(x, f)$node)
-  mapped_results <- mapply(map_logodds, fit$tree_maps, results, SIMPLIFY = TRUE)
+  mapped_results <- mapply(map_logodds, fit$tree_maps[1:n_trees], results, SIMPLIFY = TRUE)
   sweep(mapped_results, 2, fit$eta[1:n_trees], `*`)
 }
 
