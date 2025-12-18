@@ -24,7 +24,7 @@ XGBOOST_PARAMS_REGRESSION <- list(
     max_split_levels = c(3L, 10L),
     min_node_size = c(2L, 20L),
     bag_fraction = c(0.3, 1.0),
-    gamma = c(0, 10),
+    gamma = c(1e-3, 10),
     lambda = c(1e-3, 10)
 )
 
@@ -33,7 +33,7 @@ XGBOOST_PARAMS_BINARY_CLASSIFICATION <- list(
     max_split_levels = c(3L, 10L),
     min_node_size = c(2L, 20L),
     bag_fraction = c(0.3, 1.0),
-    gamma = c(0, 10),
+    gamma = c(1e-3, 10),
     lambda = c(1e-3, 10)
 )
 
