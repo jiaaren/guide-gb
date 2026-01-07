@@ -10,7 +10,6 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations,
 
   # initialise supplementary df, used for GUIDE input
   n <- nrow(x)
-  n_cols <- ncol(x)
   supp <- data.frame(resid = rep(0, n))
   if (is.null(bag_seed)) bag_seed <- sample.int(1e6, 1)
 

@@ -65,12 +65,14 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
     }
     run_guide_command(guide_path)
     code <- trim_file_at_marker("data.R")
-    # code predicted will be parsed
     eval(parse(text = code))
     trees[[it]] <- predicted
     # read fitted predictions (should be on residuals)
     if (fit_pred_exact) {
       fitted <- pred_func(x, predicted)
+      fitted$train <- "n"
+      if (!bagging) fitted$train <- "y"
+      else fitted[bag_train_idx, "train"] <- "y"
     } else {
       fitted <- read.table("data.fitted", header = TRUE)
     }
@@ -78,7 +80,7 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
     tmp_tree_map <- list()
     for (node in unique(fitted$node)) {
       # NOTE: Highly important to only use training data to compute predLogOdds
-      bool_node_train <- fitted$node == node
+      bool_node_train <- fitted$train == "y" & fitted$node == node
       # resid would have the same values as fitted_observed
       numerator <- sum(supp$resid[bool_node_train])
       denominator <- sum(y_pred[bool_node_train] * (1 - y_pred[bool_node_train]))
