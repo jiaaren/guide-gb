@@ -171,12 +171,15 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
                                  iterations = iterations,
                                  bagging = bagging,
                                  bag_fraction = bag_fraction,
+                                 complexity = complexity,
                                  bag_seed = bag_seed,
                                  val_x = val_x, val_y = val_y,
                                  early_stop_rounds = early_stop_rounds,
                                  has_early_stop = has_early_stop,
                                  has_watchlist = has_watchlist,
-                                 fit_pred_exact = fit_pred_exact)
+                                 fit_pred_exact = fit_pred_exact,
+                                 guide_pred_type = guide_pred_type,
+                                 missing_num_vars = missing_num_vars)
   }
   # Add attributes
   structure(
@@ -190,6 +193,7 @@ guide_gb <- function(x, y, guide_path, config_path, run_folder=NULL,
       guide_pred_type = guide_pred_type,
       eta = eta,
       iterations = iterations,
+      complexity = complexity,
       type = type,
       call = match.call(),             # store the call
       nobs = nrow(x),                  # number of observations

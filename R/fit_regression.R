@@ -48,9 +48,6 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations,
     })
   }
 
-  # cache column subset for x
-  x_subset <- x[, 1:n_cols]
-
   # iterate gradient boosting
   for (it in 1:iterations) {
     # compute residuals
@@ -58,12 +55,11 @@ fit_regression <- function(x, y, guide_path, run_folder, eta, iterations,
     # if bagging, create istrain indicator
     if (bagging) {
       bag_train_idx <- bag_indices[[it]]
-      write.csv(cbind(x_subset, supp)[bag_train_idx, ], file.path(run_folder, "data.csv"), row.names = FALSE)
+      write.csv(cbind(x, supp)[bag_train_idx, ], file.path(run_folder, "data.csv"), row.names = FALSE)
     } else {
-      write.csv(cbind(x_subset, supp), file.path(run_folder, "data.csv"), row.names = FALSE)
+      write.csv(cbind(x, supp), file.path(run_folder, "data.csv"), row.names = FALSE)
     }
     run_guide_command(guide_path)
-    # result <- system2(guide_path, stdin = "data.in", stdout = TRUE, stderr = TRUE)
     code <- trim_file_at_marker("data.R")
     # code predicted will be parsed
     eval(parse(text = code))

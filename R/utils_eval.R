@@ -12,7 +12,8 @@ GUIDE_GB_PARAMS_BINARY_CLASSIFICATION <- list(
     eta = c(0.01, 0.3),
     max_split_levels = c(3L, 10L),
     min_node_size = c(2L, 20L),
-    bag_fraction = c(0.3, 1.0)
+    bag_fraction = c(0.3, 1.0),
+    complexity = c(1L, 4L)
 )
 
 # XGBoost mapping:

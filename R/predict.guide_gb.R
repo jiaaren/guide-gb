@@ -23,10 +23,10 @@ predict.guide_gb <- function(object, newdata, n_trees = NULL, type = c("link", "
   }
 
   if (object$type == "regression") {
-    return(make_regressor_prediction(object$fit, x = newdata, pred_func = pred_func, n_trees = n_trees, ...))
+    return(make_regressor_prediction(object$fit, x = newdata, pred_func = pred_func, n_trees = n_trees))
   }
   if (object$type == "binary_classification") {
-    predLogOdds <- make_classifier_prediction(object$fit, x = newdata, n_trees = n_trees)
+    predLogOdds <- make_classifier_prediction(object$fit, x = newdata, pred_func = pred_func, n_trees = n_trees)
     if (type == "response") {
       return(plogis(predLogOdds))
     }

@@ -1,9 +1,9 @@
 # Handles binary cases
 # accepts when y is either 1 or 0, where positive class is assumed to be 1
 fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
-                                  bagging, bag_fraction, bag_seed=NULL, val_x = NULL, val_y = NULL,
+                                  bagging, bag_fraction, complexity, bag_seed=NULL, val_x = NULL, val_y = NULL,
                                   early_stop_rounds = NULL, has_early_stop = FALSE, has_watchlist = FALSE,
-                                  fit_pred_exact = FALSE) {
+                                  fit_pred_exact = FALSE, guide_pred_type, missing_num_vars) {
   # keep track of current path and change path to run_folder
   row.names(x) <- NULL # reset row names
   curr_path <- getwd()
@@ -28,6 +28,16 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
   trees <- vector("list", iterations)
   tree_maps <- vector("list", iterations)
 
+  # get pred_func based on root prediction
+  pred_func <- get_pred_func(guide_pred_type)
+  # add numerical columns with missingness indicators
+  if (complexity == "stepwise" && fit_pred_exact) {
+    for (col in missing_num_vars) {
+      x[[paste0(col, ".NA")]] <- ifelse(is.na(x[[col]]), 1, 0)
+      if (has_watchlist)
+        val_x[[paste0(col, ".NA")]] <- ifelse(is.na(val_x[[col]]), 1, 0)
+    }
+  }
   # initialise with default predictions for validation set
   if (has_watchlist) {
     log.odds_val <- rep(init.log.odds, nrow(val_x))
@@ -48,8 +58,7 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
     supp$resid <- y - y_pred
     # if bagging, create istrain indicator
     if (bagging) {
-      set.seed(bag_seed + it) # ensure different seed per iteration
-      bag_train_idx <- sample.int(n, size = floor(n * bag_fraction), replace = FALSE)
+      bag_train_idx <- bag_indices[[it]]
       write.csv(cbind(x, supp)[bag_train_idx, ], file.path(run_folder, "data.csv"), row.names = FALSE)
     } else {
       write.csv(cbind(x, supp), file.path(run_folder, "data.csv"), row.names = FALSE)
@@ -61,10 +70,7 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
     trees[[it]] <- predicted
     # read fitted predictions (should be on residuals)
     if (fit_pred_exact) {
-      fitted <- make_prediction_tree_a(x, predicted)
-      fitted$train <- "n"
-      if (!bagging) fitted$train <- "y"
-      else fitted[bag_train_idx, "train"] <- "y"
+      fitted <- pred_func(x, predicted)
     } else {
       fitted <- read.table("data.fitted", header = TRUE)
     }
@@ -72,7 +78,7 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
     tmp_tree_map <- list()
     for (node in unique(fitted$node)) {
       # NOTE: Highly important to only use training data to compute predLogOdds
-      bool_node_train <- fitted$train == "y" & fitted$node == node
+      bool_node_train <- fitted$node == node
       # resid would have the same values as fitted_observed
       numerator <- sum(supp$resid[bool_node_train])
       denominator <- sum(y_pred[bool_node_train] * (1 - y_pred[bool_node_train]))
@@ -89,7 +95,7 @@ fit_binary_classifier <- function(x, y, guide_path, run_folder, eta, iterations,
     # compute validation error if watchlist is provided
     if (has_watchlist) {
       # compute validation error
-      val_fitted <- make_prediction_tree_a(val_x, predicted)
+      val_fitted <- pred_func(val_x, predicted)
       val_fitted$predLogOdds <- sapply(val_fitted$node, function(n) tmp_tree_map[[as.character(n)]])
       log.odds_val <- log.odds_val + val_fitted$predLogOdds * eta
       new_val_err <- loglik2(actual = val_y, log_odds = log.odds_val)
